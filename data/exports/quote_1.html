@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <title>Devis contrat service - ID 1</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            margin: 32px;
+            color: #1f2933;
+            background: #f7f7f4;
+        }
+        .page {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            padding: 32px;
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+            border-bottom: 2px solid #d8c38a;
+            padding-bottom: 18px;
+            margin-bottom: 24px;
+        }
+        h1 {
+            margin: 0;
+            color: #102033;
+            font-size: 28px;
+        }
+        h2 {
+            margin-top: 32px;
+            color: #102033;
+            font-size: 20px;
+            border-bottom: 1px solid #e5e7eb;
+            padding-bottom: 8px;
+        }
+        .muted {
+            color: #667085;
+            font-size: 14px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #eef2ff;
+            color: #1e3a8a;
+            font-weight: bold;
+            font-size: 13px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            margin: 20px 0;
+        }
+        .card {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 14px;
+            background: #fcfcfb;
+        }
+        .label {
+            font-size: 12px;
+            color: #667085;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .value {
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 6px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 13px;
+        }
+        th {
+            background: #102033;
+            color: white;
+            text-align: left;
+            padding: 9px;
+        }
+        td {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 8px;
+            vertical-align: top;
+        }
+        tr:nth-child(even) td {
+            background: #fafafa;
+        }
+        .total {
+            font-size: 24px;
+            color: #102033;
+        }
+        .note {
+            color: #667085;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+        .footer {
+            margin-top: 34px;
+            padding-top: 16px;
+            border-top: 1px solid #e5e7eb;
+            color: #667085;
+            font-size: 12px;
+        }
+        @media print {
+            body {
+                background: white;
+                margin: 0;
+            }
+            .page {
+                box-shadow: none;
+                border-radius: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <div class="header">
+            <div>
+                <h1>Devis contrat service</h1>
+                <div class="muted">Brouillon genere depuis ServiceCalculationExport.xlsx</div>
+            </div>
+            <div>
+                <div class="badge">Statut : draft</div>
+                <div class="muted" style="margin-top: 8px;">Devis ID 1 - 2026-06-30 15:13:39</div>
+            </div>
+        </div>
+
+        <h2>Informations moteur</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="label">Designation</div>
+                <div class="value">TAD1180-83VE</div>
+            </div>
+            <div class="card">
+                <div class="label">Numero de serie</div>
+                <div class="value">70112048965</div>
+            </div>
+            <div class="card">
+                <div class="label">Produit</div>
+                <div class="value">D11-A-VOF-4</div>
+            </div>
+            <div class="card">
+                <div class="label">Pays</div>
+                <div class="value">FR</div>
+            </div>
+        </div>
+
+        <h2>Synthese financiere</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="label">Cout brut importe</div>
+                <div class="value">31 629,52 EUR</div>
+            </div>
+            <div class="card">
+                <div class="label">Prix client</div>
+                <div class="value total">37 682,27 EUR</div>
+            </div>
+            <div class="card">
+                <div class="label">Prix mensuel</div>
+                <div class="value">1 046,73 EUR</div>
+            </div>
+            <div class="card">
+                <div class="label">Prix par heure</div>
+                <div class="value">25,12 EUR/h</div>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <div class="label">Pieces</div>
+                <div class="value">28 809,52 EUR</div>
+            </div>
+            <div class="card">
+                <div class="label">Main d'oeuvre</div>
+                <div class="value">2 820,00 EUR</div>
+            </div>
+            <div class="card">
+                <div class="label">Misc</div>
+                <div class="value">0,00 EUR</div>
+            </div>
+            <div class="card">
+                <div class="label">Heures contrat</div>
+                <div class="value">1 500,00 h</div>
+            </div>
+        </div>
+
+        <h2>Planning des interventions</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Heures moteur</th>
+                    <th>Pieces</th>
+                    <th>Main d'oeuvre</th>
+                    <th>Misc</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+        <tr>
+            <td>2026-08-24</td>
+            <td>1 083,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2026-10-24</td>
+            <td>1 167,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2026-12-24</td>
+            <td>1 250,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2027-02-23</td>
+            <td>1 333,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2027-04-25</td>
+            <td>1 417,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2027-06-25</td>
+            <td>1 500,00 h</td>
+            <td>2 328,51 EUR</td>
+            <td>367,50 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>2 696,01 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2027-08-24</td>
+            <td>1 583,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2027-10-24</td>
+            <td>1 667,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2027-12-24</td>
+            <td>1 750,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2028-02-23</td>
+            <td>1 833,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2028-04-24</td>
+            <td>1 917,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2028-06-24</td>
+            <td>2 000,00 h</td>
+            <td>1 952,50 EUR</td>
+            <td>322,50 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>2 275,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2028-08-23</td>
+            <td>2 083,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2028-10-23</td>
+            <td>2 167,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2028-12-23</td>
+            <td>2 250,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2029-02-22</td>
+            <td>2 333,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2029-04-24</td>
+            <td>2 417,00 h</td>
+            <td>1 480,00 EUR</td>
+            <td>120,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>1 600,00 EUR</strong></td>
+        </tr>
+        
+        <tr>
+            <td>2029-06-24</td>
+            <td>2 500,00 h</td>
+            <td>2 328,51 EUR</td>
+            <td>330,00 EUR</td>
+            <td>0,00 EUR</td>
+            <td><strong>2 658,51 EUR</strong></td>
+        </tr>
+        
+            </tbody>
+        </table>
+
+        <h2>Lignes detaillees importees</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Groupe</th>
+                    <th>Description</th>
+                    <th>Reference</th>
+                    <th>Quantite</th>
+                    <th>Prix unitaire</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+        <tr>
+            <td>S</td>
+            <td>S</td>
+            <td></td>
+            <td>0,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>S</td>
+            <td>Valve clearance</td>
+            <td></td>
+            <td>0,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>A</td>
+            <td></td>
+            <td>3,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Labour</td>
+            <td></td>
+            <td>-</td>
+            <td>75,00 EUR</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Check software status</td>
+            <td></td>
+            <td>3,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Coolant level and antifreeze mixture</td>
+            <td></td>
+            <td>3,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Drive belts, belt tensioner and idler wheels</td>
+            <td></td>
+            <td>3,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Air filter</td>
+            <td></td>
+            <td>3,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Filter insert</td>
+            <td>21386706</td>
+            <td>3,00</td>
+            <td>142,30 EUR</td>
+            <td>426,90 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Fuel pre-filter and fuel fine filter</td>
+            <td></td>
+            <td>3,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Fuel filter</td>
+            <td>20998367</td>
+            <td>3,00</td>
+            <td>64,50 EUR</td>
+            <td>193,50 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Fuel filter</td>
+            <td>24063189</td>
+            <td>3,00</td>
+            <td>66,60 EUR</td>
+            <td>199,80 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Engine oil and oil filters / by-pass filter, Note the Oil Specification in the service protocol in product center. Service interval can be increased if VDS-4.5 ULA oil is used, see Operators manual.</td>
+            <td></td>
+            <td>3,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Oil filter</td>
+            <td>23075367</td>
+            <td>3,00</td>
+            <td>71,30 EUR</td>
+            <td>213,90 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Oil filter</td>
+            <td>23075366</td>
+            <td>6,00</td>
+            <td>63,90 EUR</td>
+            <td>383,40 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Engine oil</td>
+            <td></td>
+            <td>111,00</td>
+            <td>0,00 EUR</td>
+            <td>0,00 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>A</td>
+            <td>Reading out ash load, DPF: Note the percentage in the service protocol in product center</td>
+            <td></td>
+            <td>3,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>B</td>
+            <td>B</td>
+            <td></td>
+            <td>18,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>B</td>
+            <td>Labour</td>
+            <td></td>
+            <td>-</td>
+            <td>75,00 EUR</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>B</td>
+            <td>Valve clearance</td>
+            <td></td>
+            <td>18,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>C</td>
+            <td></td>
+            <td>2,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>Labour</td>
+            <td></td>
+            <td>-</td>
+            <td>75,00 EUR</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>Air filter, AdBlue®/DEF tank breather</td>
+            <td></td>
+            <td>2,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>Air cleaner</td>
+            <td>21743197</td>
+            <td>2,00</td>
+            <td>38,76 EUR</td>
+            <td>77,52 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>Air filter, compressor</td>
+            <td></td>
+            <td>2,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>Air filter</td>
+            <td>23907381</td>
+            <td>2,00</td>
+            <td>25,75 EUR</td>
+            <td>51,50 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>AdBlue®/DEF filter , pump unit</td>
+            <td></td>
+            <td>2,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>Filter</td>
+            <td>24063244</td>
+            <td>2,00</td>
+            <td>148,90 EUR</td>
+            <td>297,80 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>AdBlue®/DEF tank, armature filter</td>
+            <td></td>
+            <td>2,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>C</td>
+            <td>Filter</td>
+            <td>22856665</td>
+            <td>2,00</td>
+            <td>162,60 EUR</td>
+            <td>325,20 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>D</td>
+            <td>D</td>
+            <td></td>
+            <td>1,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>D</td>
+            <td>Labour</td>
+            <td></td>
+            <td>-</td>
+            <td>75,00 EUR</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>D</td>
+            <td>Drive belts</td>
+            <td></td>
+            <td>1,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>D</td>
+            <td>V-ribbed belt</td>
+            <td>981792</td>
+            <td>1,00</td>
+            <td>0,00 EUR</td>
+            <td>0,00 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>D</td>
+            <td>V-ribbed belt</td>
+            <td>20464710</td>
+            <td>1,00</td>
+            <td>0,00 EUR</td>
+            <td>0,00 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>D</td>
+            <td>Belt Tensioner, Belt Pulley, Idler pulley bearings</td>
+            <td></td>
+            <td>1,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>E</td>
+            <td>E</td>
+            <td></td>
+            <td>18,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>E</td>
+            <td>Labour</td>
+            <td></td>
+            <td>-</td>
+            <td>75,00 EUR</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>E</td>
+            <td>NOx sensor pre/post SCR</td>
+            <td></td>
+            <td>18,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>E</td>
+            <td>Sensor</td>
+            <td>23494641</td>
+            <td>18,00</td>
+            <td>728,00 EUR</td>
+            <td>13 104,00 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>E</td>
+            <td>Sensor</td>
+            <td>23494659</td>
+            <td>18,00</td>
+            <td>752,00 EUR</td>
+            <td>13 536,00 EUR</td>
+        </tr>
+        
+        <tr>
+            <td>F</td>
+            <td>F</td>
+            <td></td>
+            <td>1,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>F</td>
+            <td>Labour</td>
+            <td></td>
+            <td>-</td>
+            <td>75,00 EUR</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>F</td>
+            <td>Coolant</td>
+            <td></td>
+            <td>1,00</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        
+        <tr>
+            <td>F</td>
+            <td>Volvo coolant ready mixed</td>
+            <td></td>
+            <td>21,00</td>
+            <td>0,00 EUR</td>
+            <td>0,00 EUR</td>
+        </tr>
+        
+            </tbody>
+        </table>
+
+        <div class="footer">
+            Document de travail genere automatiquement par Dealer Quote Manager. Les conditions commerciales finales restent a valider avant envoi client.
+        </div>
+    </div>
+</body>
+</html>
