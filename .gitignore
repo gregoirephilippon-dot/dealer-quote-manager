@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# SQLite / bases locales
+*.sqlite
+*.sqlite3
+*.db
+data/
+!data/.gitkeep
+
+# Fichiers Excel constructeur / client
+*.xlsx
+*.xlsm
+*.xls
+
+# Exports generes
+*.pdf
+data/exports/
+data/uploads/
+data/examples/
+data/imports/
+
+# Logs
+*.log
+
+# Build / executable
+build/
+dist/
+*.spec
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+
+# Fichier cree par erreur
+dealer-quote-manager.gitignore
