@@ -521,6 +521,210 @@ def get_export(filename: str):
     return FileResponse(path)
 
 
+
+# --- Permanent package routes - added by install_packages_permanent.py ---
+from fastapi.responses import HTMLResponse as _PkgHTMLResponse, RedirectResponse as _PkgRedirectResponse
+from package_model import (
+    apply_package_to_quote as _pkg_apply_package_to_quote,
+    ensure_package_schema as _pkg_ensure_package_schema,
+    get_package_status as _pkg_get_package_status,
+)
+
+
+def _pkg_panel_html(quote_id: int):
+    _pkg_ensure_package_schema()
+    current_key, current_name, packages = _pkg_get_package_status(quote_id)
+
+    buttons = []
+    for package in packages:
+        active_class = "active" if package["active"] else ""
+        active_label = " ✓" if package["active"] else ""
+        buttons.append(f"""
+            <a class="pkg-button {active_class}" href="/quote/{quote_id}/package/apply/{package['key']}">
+                <span>{package['label']}{active_label}</span>
+                <small>{package['matching']}/{package['total']} services</small>
+            </a>
+        """)
+
+    current = current_name or "Non défini"
+
+    return f"""
+    <div class="pkg-panel">
+        <div class="pkg-title">
+            <b>Package devis</b>
+            <span>Actuel : {current}</span>
+        </div>
+        <div class="pkg-buttons">
+            {''.join(buttons)}
+        </div>
+        <div class="pkg-help">
+            Basic, Base Care, Comfort Care et Advanced Care sont permanents.
+            Le choix modifie les services inclus/exclus puis recalcule le devis.
+        </div>
+    </div>
+    <style>
+        .pkg-panel {{
+            background: #fffaf0;
+            border: 1px solid #d9c98b;
+            border-radius: 14px;
+            padding: 14px;
+            margin: 14px 0 18px 0;
+            box-shadow: 0 5px 18px rgba(16, 32, 51, 0.08);
+            font-family: Arial, sans-serif;
+        }}
+        .pkg-title {{
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            color: #102033;
+            margin-bottom: 10px;
+        }}
+        .pkg-title span {{
+            color: #697386;
+            font-size: 13px;
+        }}
+        .pkg-buttons {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 10px;
+        }}
+        .pkg-button {{
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            background: #ffffff;
+            border: 1px solid #e1d5a3;
+            color: #102033;
+            border-radius: 11px;
+            padding: 10px 12px;
+            text-decoration: none;
+            font-weight: 700;
+        }}
+        .pkg-button small {{
+            color: #697386;
+            font-weight: 400;
+        }}
+        .pkg-button.active {{
+            background: #102033;
+            color: white;
+            border-color: #102033;
+        }}
+        .pkg-button.active small {{
+            color: #e9dfbd;
+        }}
+        .pkg-help {{
+            margin-top: 10px;
+            font-size: 12px;
+            color: #697386;
+        }}
+    </style>
+    """
+
+
+@app.get("/quote/{quote_id}/package/apply/{package_key}")
+def quote_package_apply_permanent(quote_id: int, package_key: str):
+    _pkg_apply_package_to_quote(quote_id, package_key)
+    return _PkgRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
+
+
+@app.get("/quote/{quote_id}/packages", response_class=_PkgHTMLResponse)
+def quote_packages_permanent_page(quote_id: int):
+    current_key, current_name, packages = _pkg_get_package_status(quote_id)
+
+    cards = []
+    for package in packages:
+        active = "active" if package["active"] else ""
+        cards.append(f"""
+        <div class="card {active}">
+            <h2>{package['label']}</h2>
+            <p>{package['description']}</p>
+            <div class="small">{package['matching']}/{package['total']} services inclus actuellement</div>
+            <div class="service-list">{', '.join(package['services'])}</div>
+            <a class="btn" href="/quote/{quote_id}/package/apply/{package['key']}">Choisir {package['label']}</a>
+        </div>
+        """)
+
+    return f"""
+    <!doctype html>
+    <html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <title>Packages - Devis {quote_id}</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 28px; background: #f6f3ea; color: #172033; }}
+            a {{ color: #172033; font-weight: 700; }}
+            .top {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }}
+            .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }}
+            .card {{ background: white; border: 1px solid #d9c98b; border-radius: 14px; padding: 18px; box-shadow: 0 5px 16px rgba(0,0,0,0.06); }}
+            .card.active {{ border: 3px solid #102033; }}
+            h1 {{ margin: 0; }}
+            h2 {{ margin-top: 0; }}
+            .btn {{ display: inline-block; margin-top: 12px; padding: 10px 14px; border-radius: 10px; background: #102033; color: white; text-decoration: none; }}
+            .small {{ color: #697386; font-size: 13px; margin-top: 8px; }}
+            .service-list {{ color: #697386; font-size: 12px; margin-top: 10px; line-height: 1.4; }}
+        </style>
+    </head>
+    <body>
+        <div class="top">
+            <h1>Packages permanents - Devis {quote_id}</h1>
+            <div><a href="/quote/{quote_id}/services">Services & temps</a> | <a href="/">Accueil</a></div>
+        </div>
+        <p>Package actuel : <b>{current_name or 'Non défini'}</b></p>
+        <div class="grid">{''.join(cards)}</div>
+    </body>
+    </html>
+    """
+
+
+@app.middleware("http")
+async def _pkg_inject_panel_middleware(request, call_next):
+    response = await call_next(request)
+
+    path = request.url.path
+    if response.status_code != 200:
+        return response
+
+    if not (path.endswith("/services") and path.startswith("/quote/")):
+        return response
+
+    try:
+        quote_id = int(path.strip("/").split("/")[1])
+    except Exception:
+        return response
+
+    content_type = response.headers.get("content-type", "")
+    if "text/html" not in content_type:
+        return response
+
+    body = b""
+    async for chunk in response.body_iterator:
+        body += chunk
+
+    try:
+        html = body.decode("utf-8")
+    except Exception:
+        return response
+
+    panel = _pkg_panel_html(quote_id)
+
+    if "<body>" in html:
+        html = html.replace("<body>", "<body>" + panel, 1)
+    elif "<body " in html:
+        idx = html.find(">", html.find("<body "))
+        if idx != -1:
+            html = html[:idx + 1] + panel + html[idx + 1:]
+        else:
+            html = panel + html
+    else:
+        html = panel + html
+
+    headers = dict(response.headers)
+    headers.pop("content-length", None)
+
+    return _PkgHTMLResponse(content=html, status_code=response.status_code, headers=headers)
+# --- End permanent package routes ---
+
+
 if __name__ == "__main__":
     import uvicorn
     init_db()
