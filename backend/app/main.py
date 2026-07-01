@@ -22,11 +22,55 @@ app = FastAPI(title="Dealer Quote Manager")
 
 
 def run_command(command):
+    """
+    Compatible Python normal + PyInstaller EXE.
+
+    En version EXE, sys.executable pointe vers Dealer Quote Manager.exe.
+    Relancer sys.executable relance donc tout le serveur et bloque le port 8000.
+    On exécute donc les scripts Python directement dans le même processus avec runpy.
+    """
+    import contextlib
+    import io
+    import runpy
+    import sys as _sys
+    import traceback
+
+    if command and str(command[0]) == str(_sys.executable) and len(command) >= 2:
+        script_arg = str(command[1]).replace("\\", "/")
+        script_path = BASE_DIR / script_arg
+
+        if not script_path.exists():
+            script_path = Path(script_arg)
+
+        if script_path.exists():
+            old_argv = _sys.argv[:]
+            stdout_buffer = io.StringIO()
+            stderr_buffer = io.StringIO()
+
+            try:
+                _sys.argv = [str(script_path)] + [str(x) for x in command[2:]]
+
+                with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+                    try:
+                        runpy.run_path(str(script_path), run_name="__main__")
+                    except SystemExit as exc:
+                        code = exc.code
+                        if code not in (None, 0):
+                            raise RuntimeError(stderr_buffer.getvalue() or stdout_buffer.getvalue() or f"Erreur script {script_path} : {code}")
+
+                return stdout_buffer.getvalue()
+
+            except Exception:
+                error_text = stderr_buffer.getvalue() or stdout_buffer.getvalue() or traceback.format_exc()
+                raise RuntimeError(error_text)
+
+            finally:
+                _sys.argv = old_argv
+
     result = subprocess.run(command, cwd=BASE_DIR, text=True, capture_output=True)
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout)
     return result.stdout
-
 
 def fmt_money(value, currency="EUR"):
     if value is None:
