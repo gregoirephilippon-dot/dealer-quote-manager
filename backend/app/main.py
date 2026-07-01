@@ -315,6 +315,16 @@ def import_file(file: UploadFile = File(...)):
             raise RuntimeError("Impossible de retrouver l'ID du devis cree.")
 
         ensure_quote_services(quote_id)
+
+        # Remonte le total de l'onglet Overview colonne C dans le service 2.2.
+        # Compatible EXE : ne relance pas l'application, met à jour la base directement.
+        try:
+            from overview_total_sync import apply_overview_total_to_service_2_2
+            overview_totals = apply_overview_total_to_service_2_2(quote_id, upload_path)
+            print(f"Overview C -> service 2.2 : {overview_totals}")
+        except Exception as exc:
+            print(f"Attention : impossible de remonter Overview C vers 2.2 : {exc}")
+
         run_command([sys.executable, "backend/app/apply_pricing.py", str(quote_id)])
         run_command([sys.executable, "backend/app/export_quote_html.py", str(quote_id)])
         run_command([sys.executable, "backend/app/export_quote_pdf.py", str(quote_id)])
