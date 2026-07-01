@@ -44,3 +44,5 @@ desktop.ini
 
 # Fichier cree par erreur
 dealer-quote-manager.gitignore
+
+release/

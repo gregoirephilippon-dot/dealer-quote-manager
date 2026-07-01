@@ -725,6 +725,198 @@ async def _pkg_inject_panel_middleware(request, call_next):
 # --- End permanent package routes ---
 
 
+
+# --- Shutdown route - added by install_shutdown_button.py ---
+import os as _shutdown_os
+import threading as _shutdown_threading
+import time as _shutdown_time
+
+from fastapi.responses import HTMLResponse as _ShutdownHTMLResponse
+
+
+def _shutdown_button_html():
+    return """
+    <div class="shutdown-bar">
+        <a class="shutdown-btn" href="/shutdown/confirm">Quitter le logiciel</a>
+    </div>
+    <style>
+        .shutdown-bar {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            z-index: 99999;
+            font-family: Arial, sans-serif;
+        }
+        .shutdown-btn {
+            display: inline-block;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: #7a1f1f;
+            color: white !important;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+        }
+        .shutdown-btn:hover {
+            background: #9f2525;
+        }
+    </style>
+    """
+
+
+def _shutdown_process_soon():
+    def _stop():
+        _shutdown_time.sleep(0.8)
+        _shutdown_os._exit(0)
+
+    _shutdown_threading.Thread(target=_stop, daemon=True).start()
+
+
+@app.get("/shutdown/confirm", response_class=_ShutdownHTMLResponse)
+def shutdown_confirm_page():
+    return """
+    <!doctype html>
+    <html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <title>Quitter Dealer Quote Manager</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background: #f6f3ea;
+                color: #172033;
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .card {
+                background: white;
+                border: 1px solid #d9c98b;
+                border-radius: 18px;
+                padding: 28px;
+                max-width: 520px;
+                box-shadow: 0 8px 26px rgba(0,0,0,0.12);
+                text-align: center;
+            }
+            h1 { margin-top: 0; }
+            .actions {
+                display: flex;
+                justify-content: center;
+                gap: 12px;
+                margin-top: 22px;
+            }
+            a {
+                display: inline-block;
+                padding: 11px 16px;
+                border-radius: 12px;
+                text-decoration: none;
+                font-weight: 700;
+            }
+            .quit { background: #7a1f1f; color: white; }
+            .back { background: #102033; color: white; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>Quitter le logiciel ?</h1>
+            <p>Cette action arrête le serveur local Dealer Quote Manager et libère le port 8000.</p>
+            <div class="actions">
+                <a class="quit" href="/shutdown">Oui, quitter</a>
+                <a class="back" href="/">Annuler</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.get("/shutdown", response_class=_ShutdownHTMLResponse)
+def shutdown_app():
+    _shutdown_process_soon()
+    return """
+    <!doctype html>
+    <html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <title>Dealer Quote Manager arrêté</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background: #f6f3ea;
+                color: #172033;
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .card {
+                background: white;
+                border: 1px solid #d9c98b;
+                border-radius: 18px;
+                padding: 28px;
+                max-width: 520px;
+                box-shadow: 0 8px 26px rgba(0,0,0,0.12);
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>Logiciel arrêté</h1>
+            <p>Tu peux maintenant fermer cette page.</p>
+            <p>La fenêtre noire va se fermer automatiquement.</p>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.middleware("http")
+async def _shutdown_button_middleware(request, call_next):
+    response = await call_next(request)
+
+    path = request.url.path
+    if path.startswith("/shutdown"):
+        return response
+
+    if response.status_code != 200:
+        return response
+
+    content_type = response.headers.get("content-type", "")
+    if "text/html" not in content_type:
+        return response
+
+    body = b""
+    async for chunk in response.body_iterator:
+        body += chunk
+
+    try:
+        html = body.decode("utf-8")
+    except Exception:
+        return response
+
+    button = _shutdown_button_html()
+
+    if "</body>" in html:
+        html = html.replace("</body>", button + "</body>", 1)
+    else:
+        html = html + button
+
+    headers = dict(response.headers)
+    headers.pop("content-length", None)
+
+    return _ShutdownHTMLResponse(
+        content=html,
+        status_code=response.status_code,
+        headers=headers,
+    )
+# --- End shutdown route ---
+
+
 if __name__ == "__main__":
     import uvicorn
     init_db()
