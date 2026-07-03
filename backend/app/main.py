@@ -132,7 +132,7 @@ def layout(title, content):
         <a href="/">Historique</a>
         <a href="/import">Importer Excel</a>
         <a href="/settings">Paramètres dealer</a>
-        <a href="/instructions">Instructions constructeur</a>
+        <a href="/dealer-discounts">Remise dealer</a>
     </nav>
 </header>
 <main>{content}</main>
@@ -226,7 +226,7 @@ def home():
     <h2>Historique des devis</h2>
     <div class="card">
         <a class="button" href="/import">Importer un nouveau fichier Excel</a>
-        <a class="button secondary" href="/instructions">Voir les instructions constructeur</a>
+        <a class="button secondary" href="/dealer-discounts">Voir les instructions constructeur</a>
         
     </div>
     <table>
@@ -243,7 +243,7 @@ def instructions_page():
         service_rows += f"<tr><td>{item['id']}</td><td>{item['group']}</td><td>{item['name']}</td><td>{item['source']}</td></tr>"
 
     content = f"""
-    <h2>Instructions constructeur</h2>
+    <h2>Remise dealer</h2>
     
     <h3>Code couleur du classeur</h3>
     <div class="card legend">
@@ -969,6 +969,206 @@ async def _shutdown_button_middleware(request, call_next):
         headers=headers,
     )
 # --- End shutdown route ---
+
+
+# --- Dealer discount settings routes - no floating button ---
+from fastapi import Request as _DealerDiscountRequest
+from fastapi.responses import HTMLResponse as _DealerDiscountHTMLResponse, RedirectResponse as _DealerDiscountRedirectResponse
+
+from dealer_discount_settings import (
+    ensure_dealer_discount_schema as _dd_ensure_schema,
+    get_dealer_discount_codes as _dd_get_codes,
+    reset_dealer_discount_codes as _dd_reset_codes,
+    update_dealer_discount_codes as _dd_update_codes,
+)
+
+
+@app.get("/dealer-discounts", response_class=_DealerDiscountHTMLResponse)
+def dealer_discounts_page():
+    _dd_ensure_schema()
+    rows = _dd_get_codes()
+
+    table_rows = []
+    for row in rows:
+        dc = row["dc"]
+        table_rows.append(f"""
+            <tr>
+                <td class="dc">{dc}</td>
+                <td><input name="group_name_{dc}" value="{row['group_name']}"></td>
+                <td><textarea name="example_products_{dc}">{row['example_products']}</textarea></td>
+                <td><input class="number" name="dealer_discount_{dc}" value="{row['dealer_discount_percent']}"></td>
+                <td><input class="number" name="customer_type_discount_{dc}" value="{row['customer_type_discount_percent']}"></td>
+            </tr>
+        """)
+
+    return f"""
+    <!doctype html>
+    <html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <title>Remise dealer</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 26px;
+                background: #f6f3ea;
+                color: #172033;
+            }}
+            .top {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 16px;
+                margin-bottom: 18px;
+            }}
+            h1 {{
+                margin: 0;
+            }}
+            a {{
+                color: #102033;
+                font-weight: 700;
+                text-decoration: none;
+            }}
+            .panel {{
+                background: white;
+                border: 1px solid #d9c98b;
+                border-radius: 16px;
+                padding: 18px;
+                box-shadow: 0 5px 18px rgba(16, 32, 51, 0.08);
+                margin-bottom: 18px;
+            }}
+            .help {{
+                color: #667085;
+                line-height: 1.45;
+                font-size: 14px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                background: white;
+                border-radius: 14px;
+                overflow: hidden;
+            }}
+            th {{
+                background: #102033;
+                color: white;
+                text-align: left;
+                padding: 10px;
+                font-size: 13px;
+            }}
+            td {{
+                border-bottom: 1px solid #e6e0c8;
+                padding: 8px;
+                vertical-align: top;
+            }}
+            .dc {{
+                font-weight: 700;
+                text-align: center;
+                width: 55px;
+            }}
+            input, textarea {{
+                width: 100%;
+                box-sizing: border-box;
+                border: 1px solid #d9d2b5;
+                border-radius: 8px;
+                padding: 8px;
+                font-family: Arial, sans-serif;
+                font-size: 13px;
+                background: #fffdf7;
+            }}
+            textarea {{
+                min-height: 48px;
+                resize: vertical;
+            }}
+            .number {{
+                text-align: right;
+                width: 110px;
+            }}
+            .actions {{
+                display: flex;
+                gap: 10px;
+                margin-top: 16px;
+            }}
+            button, .button {{
+                display: inline-block;
+                border: 0;
+                border-radius: 10px;
+                padding: 11px 15px;
+                background: #102033;
+                color: white !important;
+                font-weight: 700;
+                cursor: pointer;
+                text-decoration: none;
+            }}
+            .danger {{
+                background: #7a1f1f;
+            }}
+            .note {{
+                font-size: 12px;
+                color: #667085;
+                margin-top: 10px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="top">
+            <h1>Remise dealer</h1>
+            <div>
+                <a href="/">Accueil</a>
+            </div>
+        </div>
+
+        <div class="panel help">
+            <b>Source constructeur :</b> onglet Internal Master Data, colonnes
+            <b>Example products</b> et <b>Dealer discount</b>.
+            <br>
+            Les remises sont saisies en pourcentage : <b>49</b> = 49%.
+            Elles sont stockées dans la base locale et peuvent être ajustées selon le dealer.
+        </div>
+
+        <form method="post" action="/dealer-discounts">
+            <table>
+                <thead>
+                    <tr>
+                        <th>DC</th>
+                        <th>Group</th>
+                        <th>Example products</th>
+                        <th>Dealer discount %</th>
+                        <th>Customer type discount %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(table_rows)}
+                </tbody>
+            </table>
+
+            <div class="actions">
+                <button type="submit">Enregistrer les remises</button>
+                <a class="button danger" href="/dealer-discounts/reset">Réinitialiser valeurs constructeur</a>
+            </div>
+
+            <div class="note">
+                Cette page rend les remises visibles et paramétrables.
+                L’application des remises dans un calcul détaillé par code DC se fera dans une étape dédiée si on décide de recalculer les pièces ligne par ligne.
+            </div>
+        </form>
+    </body>
+    </html>
+    """
+
+
+@app.post("/dealer-discounts")
+async def dealer_discounts_save(request: _DealerDiscountRequest):
+    form = await request.form()
+    _dd_update_codes(form)
+    return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
+
+
+@app.get("/dealer-discounts/reset")
+def dealer_discounts_reset():
+    _dd_reset_codes()
+    return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
+# --- End dealer discount settings routes ---
 
 
 if __name__ == "__main__":
