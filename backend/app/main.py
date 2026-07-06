@@ -226,7 +226,6 @@ def home():
     <h2>Historique des devis</h2>
     <div class="card">
         <a class="button" href="/import">Importer un nouveau fichier Excel</a>
-        <a class="button secondary" href="/dealer-discounts">Voir les instructions constructeur</a>
         
     </div>
     <table>
@@ -236,7 +235,6 @@ def home():
     return layout("Historique", content)
 
 
-@app.get("/instructions", response_class=HTMLResponse)
 def instructions_page():
     service_rows = ""
     for item in SERVICE_CATALOG:
