@@ -13,6 +13,25 @@ from service_catalog import SERVICE_CATALOG
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+
+
+def _safe_uploaded_excel_path(upload_dir, filename, prefix="upload"):
+    from pathlib import Path
+    import re
+    import uuid
+
+    upload_dir = Path(upload_dir)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    raw_name = filename or "uploaded.xlsx"
+    suffix = Path(raw_name).suffix.lower()
+
+    if suffix not in (".xlsx", ".xlsm", ".xls"):
+        suffix = ".xlsx"
+
+    clean_prefix = re.sub(r"[^A-Za-z0-9_-]+", "_", str(prefix)).strip("_") or "upload"
+    return upload_dir / f"{clean_prefix}_{uuid.uuid4().hex[:8]}{suffix}"
+
 DATA_DIR = BASE_DIR / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 EXPORT_DIR = DATA_DIR / "exports"
@@ -1093,8 +1112,7 @@ async def price_catalog_upload(file: _OptionUploadFile = _OptionFile(...)):
     upload_dir = BASE_DIR / "data" / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_name = file.filename.replace("/", "_").replace("\\", "_")
-    target = upload_dir / safe_name
+    target = _safe_uploaded_excel_path(upload_dir, file.filename, "price_catalog")
 
     with target.open("wb") as buffer:
         _option_shutil.copyfileobj(file.file, buffer)
