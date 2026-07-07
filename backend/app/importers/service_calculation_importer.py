@@ -101,65 +101,181 @@ def normalize_key(label: str) -> str:
     )
 
 
-def get_ws(wb, name: str):
-    if name not in wb.sheetnames:
-        raise ValueError(f"Onglet manquant : {name}")
-    return wb[name]
+
+# --- Multilingual Service Calculator import helpers ---
+def _normalize_import_text(value):
+    import unicodedata
+    if value is None:
+        return ""
+    text = str(value).strip().lower()
+    text = text.replace("œ", "oe").replace("’", "'").replace("`", "'")
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = " ".join(text.split())
+    return text
 
 
-def parse_first_page(wb) -> dict[str, Any]:
-    ws = get_ws(wb, "First page")
+SHEET_ALIASES = {
+    "First page": [
+        "First page",
+        "Première page",
+        "Premiere page",
+        "Page de garde",
+        "Page initiale",
+        "Accueil",
+    ],
+    "Hidden for import": [
+        "Hidden for import",
+        "Caché pour l'importation",
+        "Cache pour l'importation",
+        "Caché pour importation",
+        "Cache pour importation",
+    ],
+    "Overview": [
+        "Overview",
+        "Présentation",
+        "Presentation",
+        "Aperçu",
+        "Apercu",
+        "Synthèse",
+        "Synthese",
+        "Résumé",
+        "Resume",
+    ],
+}
 
-    # Ligne 2 = titres moteur, ligne 3 = valeurs moteur dans l'export actuel.
-    headers = [clean(cell.value) for cell in ws[2]]
-    values = [clean(cell.value) for cell in ws[3]]
-    row_map = {h: v for h, v in zip(headers, values) if h}
 
-    engine = EngineInfo(
-        unit=row_map.get("Unit"),
-        installation=row_map.get("Installation"),
-        chassis_id=row_map.get("ChassisID"),
-        serial_number=str(row_map.get("Serial Number")) if row_map.get("Serial Number") is not None else None,
-        product_category=row_map.get("Product Category"),
-        product_name=row_map.get("Product Name"),
-        product_designation=row_map.get("Product Designation"),
-        product_part_number=str(row_map.get("Product Part Number")) if row_map.get("Product Part Number") is not None else None,
-        status=row_map.get("Status"),
-        current_country=row_map.get("Current Country"),
-    )
+def _is_labour_label(value):
+    return _normalize_import_text(value) in {
+        "labour",
+        "labor",
+        "main d'oeuvre",
+        "main d oeuvre",
+        "main-doeuvre",
+        "main-d'oeuvre",
+    }
+# --- End multilingual helpers ---
 
-    # Lecture par libellés en colonne A, valeur en colonne B.
-    labels: dict[str, Any] = {}
-    for row in ws.iter_rows(min_row=1, max_row=60, values_only=True):
-        label = clean(row[0])
-        if label is not None:
-            labels[label] = clean(row[1]) if len(row) > 1 else None
 
-    basis = CalculationBasis(
-        price_list_used=clean(ws[6][0].value),
-        currency=labels.get("Currency"),
-        total_calculation_hours=to_float(labels.get("Total No of calculation hours")),
-        op_hours_per_year=to_float(labels.get("Op hrs / year")),
-        labour_rate=to_float(labels.get("Labour rate")),
-        number_of_service_interventions=to_int(labels.get("No of service interventions")),
-    )
 
-    result = CalculationResult(
-        cost_per_hour=to_float(labels.get("Cost per hour")),
-        total_labour_hours=to_float(labels.get("Total labour hours")),
-        total_labour_cost=to_float(labels.get("Total labour cost")),
-        total_material_cost=to_float(labels.get("Total material cost")),
-        total_additional_material_cost=to_float(labels.get("Total additional material cost")),
-        misc_cost=to_float(labels.get("Misc cost")),
-        total=to_float(labels.get("Total")),
-    )
+def get_ws(wb, name):
+    """
+    Retourne un onglet Excel en acceptant les noms anglais/français.
+    """
+    candidates = SHEET_ALIASES.get(name, [name])
 
-    return {
-        "engine": asdict(engine),
-        "calculation_basis": asdict(basis),
-        "calculation_result": asdict(result),
+    for candidate in candidates:
+        if candidate in wb.sheetnames:
+            return wb[candidate]
+
+    normalized_sheets = {
+        _normalize_import_text(sheet_name): sheet_name
+        for sheet_name in wb.sheetnames
     }
 
+    for candidate in candidates:
+        normalized = _normalize_import_text(candidate)
+        if normalized in normalized_sheets:
+            return wb[normalized_sheets[normalized]]
+
+    aliases = ", ".join(candidates)
+    found = ", ".join(wb.sheetnames)
+    raise ValueError(
+        f"Onglet manquant : {name}. Alias acceptés : {aliases}. Onglets trouvés : {found}"
+    )
+
+
+def parse_first_page(wb):
+    """
+    Lit la première page du Service Calculator en anglais ou en français.
+
+    Champs anglais :
+    - First page
+    - Serial Number, Product Name, Product Designation, Current Country
+    - Total No of calculation hours, Op hrs / year, Labour rate...
+
+    Champs français :
+    - Première page
+    - Numéro de série, Nom du produit, Désignation du produit, Pays actuel
+    - Nombre total d'heures calculé, Heures/année de fonctionnement, Taux de main d'œuvre...
+    """
+    ws = get_ws(wb, "First page")
+
+    def cell_value(addr):
+        value = ws[addr].value
+        if isinstance(value, str):
+            value = value.replace("\xa0", " ").strip()
+        return value
+
+    def to_float(value):
+        if value is None or value == "":
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = str(value).replace("\xa0", " ").replace(" ", "").replace(",", ".").strip()
+        try:
+            return float(text)
+        except Exception:
+            return None
+
+    def infer_country(price_list, current_country):
+        if current_country:
+            return current_country
+
+        text = str(price_list or "").lower()
+        if "france" in text or "-fr" in text or "_fr" in text:
+            return "FR"
+        if "belgium" in text or "belgique" in text:
+            return "BE"
+        if "netherlands" in text or "pays-bas" in text:
+            return "NL"
+        if "germany" in text or "allemagne" in text:
+            return "DE"
+        if "spain" in text or "espagne" in text:
+            return "ES"
+        if "italy" in text or "italie" in text:
+            return "IT"
+        return None
+
+    price_list_used = cell_value("A6")
+
+    engine = {
+        "unit": cell_value("A3"),
+        "installation": cell_value("B3"),
+        "chassis_id": cell_value("C3"),
+        "serial_number": cell_value("D3"),
+        "product_category": cell_value("E3"),
+        "product_name": cell_value("F3"),
+        "product_designation": cell_value("G3"),
+        "product_part_number": cell_value("H3"),
+        "status": cell_value("I3"),
+        "current_country": infer_country(price_list_used, cell_value("J3")),
+    }
+
+    calculation_basis = {
+        "price_list_used": price_list_used,
+        "currency": cell_value("B8"),
+        "total_calculation_hours": to_float(cell_value("B9")),
+        "op_hours_per_year": to_float(cell_value("B10")),
+        "labour_rate": to_float(cell_value("B11")),
+        "number_of_service_interventions": int(to_float(cell_value("B12")) or 0),
+    }
+
+    calculation_result = {
+        "cost_per_hour": to_float(cell_value("B15")),
+        "total_labour_hours": to_float(cell_value("B16")),
+        "total_labour_cost": to_float(cell_value("B17")),
+        "total_material_cost": to_float(cell_value("B18")),
+        "total_additional_material_cost": to_float(cell_value("B19")),
+        "misc_cost": to_float(cell_value("B20")),
+        "total": to_float(cell_value("B21")),
+    }
+
+    return {
+        "engine": engine,
+        "calculation_basis": calculation_basis,
+        "calculation_result": calculation_result,
+    }
 
 def parse_hidden_for_import(wb) -> list[dict[str, Any]]:
     ws = get_ws(wb, "Hidden for import")
@@ -177,7 +293,7 @@ def parse_hidden_for_import(wb) -> list[dict[str, Any]]:
         if is_group:
             current_group = component_text
             line_type = "service_group"
-        elif component_text.lower() == "labour":
+        elif component_text.lower() in ("labour", "labor", "main d’œuvre", "main d'œuvre", "main d oeuvre", "main d'oeuvre"):
             line_type = "labour"
         elif part_no is not None:
             line_type = "part"
@@ -251,7 +367,7 @@ def parse_overview(wb) -> dict[str, Any]:
         elif component_text in {"Parts", "Labour", "Misc", "Total", "Accumulated"}:
             line["line_type"] = "summary_total"
             totals_by_name[component_text.lower()] = line
-        elif component_text.lower() == "labour":
+        elif component_text.lower() in ("labour", "labor", "main d’œuvre", "main d'œuvre", "main d oeuvre", "main d'oeuvre"):
             line["line_type"] = "labour"
         elif line["part_number"]:
             line["line_type"] = "part"
@@ -309,7 +425,7 @@ def parse_intervention_sheets(wb) -> list[dict[str, Any]]:
             if is_group:
                 current_group = component_text
                 line_type = "service_group"
-            elif component_text.lower() == "labour":
+            elif component_text.lower() in ("labour", "labor", "main d’œuvre", "main d'œuvre", "main d oeuvre", "main d'oeuvre"):
                 line_type = "labour"
             elif part_no is not None:
                 line_type = "part"
