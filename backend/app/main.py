@@ -11,9 +11,7 @@ from database import get_connection, init_db
 from settings import ensure_default_settings, get_settings_dict, set_setting
 from service_catalog import SERVICE_CATALOG
 
-
 BASE_DIR = Path(__file__).resolve().parents[2]
-
 
 def _safe_uploaded_excel_path(upload_dir, filename, prefix="upload"):
     from pathlib import Path
@@ -38,7 +36,6 @@ EXPORT_DIR = DATA_DIR / "exports"
 JSON_DIR = DATA_DIR / "examples"
 
 app = FastAPI(title="Dealer Quote Manager")
-
 
 def run_command(command):
     """
@@ -96,12 +93,10 @@ def fmt_money(value, currency="EUR"):
         return "-"
     return f"{value:,.2f} {currency}".replace(",", " ").replace(".", ",")
 
-
 def fmt_number(value):
     if value is None:
         return ""
     return str(value)
-
 
 def layout(title, content):
     return f"""<!doctype html>
@@ -149,15 +144,14 @@ def layout(title, content):
     <h1>Dealer Quote Manager</h1>
     <nav>
         <a href="/">Historique</a>
-        <a href="/import">Importer Excel</a>
         <a href="/settings">Paramètres dealer</a>
         <a href="/dealer-discounts">Remise dealer</a>
+        <a href="/price-catalog">Import price list</a>
     </nav>
 </header>
 <main>{content}</main>
 </body>
 </html>"""
-
 
 def ensure_quote_services(quote_id):
     init_db()
@@ -199,7 +193,6 @@ def ensure_quote_services(quote_id):
                 ),
             )
         conn.commit()
-
 
 @app.get("/", response_class=HTMLResponse)
 def home():
@@ -244,7 +237,7 @@ def home():
     content = f"""
     <h2>Historique des devis</h2>
     <div class="card">
-        <a class="button" href="/import">Importer un nouveau fichier Excel</a>
+        <a class="button" href="/import">Importer un nouveau fichier Service Calculator</a>
         
     </div>
     <table>
@@ -252,7 +245,6 @@ def home():
         <tbody>{rows_html}</tbody>
     </table>"""
     return layout("Historique", content)
-
 
 def instructions_page():
     service_rows = ""
@@ -289,7 +281,6 @@ def instructions_page():
     """
     return layout("Instructions", content)
 
-
 @app.get("/import", response_class=HTMLResponse)
 def import_page():
     content = """
@@ -302,7 +293,6 @@ def import_page():
         
     </div>"""
     return layout("Importer", content)
-
 
 @app.post("/import", response_class=HTMLResponse)
 def import_file(file: UploadFile = File(...)):
@@ -350,7 +340,6 @@ def import_file(file: UploadFile = File(...)):
 
     except Exception as exc:
         return layout("Erreur import", f"<h2>Erreur import</h2><div class='error'>{str(exc)}</div><a class='button' href='/import'>Retour import</a>")
-
 
 @app.get("/quote/{quote_id}/inputs", response_class=HTMLResponse)
 def quote_inputs_page(quote_id: int):
@@ -401,7 +390,6 @@ def quote_inputs_page(quote_id: int):
     </form>"""
     return layout("Inputs devis", content)
 
-
 @app.post("/quote/{quote_id}/inputs")
 def save_quote_inputs(
     quote_id: int,
@@ -436,7 +424,6 @@ def save_quote_inputs(
 
     regenerate_quote(quote_id)
     return RedirectResponse(url=f"/quote/{quote_id}/inputs", status_code=303)
-
 
 @app.get("/quote/{quote_id}/services", response_class=HTMLResponse)
 def quote_services_page(quote_id: int):
@@ -491,7 +478,6 @@ def quote_services_page(quote_id: int):
     </form>"""
     return layout("Services & temps", content)
 
-
 @app.post("/quote/{quote_id}/services")
 async def save_quote_services(quote_id: int, request: Request):
     init_db()
@@ -532,12 +518,10 @@ async def save_quote_services(quote_id: int, request: Request):
     regenerate_quote(quote_id)
     return RedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
 
-
 def regenerate_quote(quote_id):
     run_command([sys.executable, "backend/app/apply_pricing.py", str(quote_id)])
     run_command([sys.executable, "backend/app/export_quote_html.py", str(quote_id)])
     run_command([sys.executable, "backend/app/export_quote_pdf.py", str(quote_id)])
-
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page():
@@ -558,7 +542,6 @@ def settings_page():
     content = f"<h2>Paramètres dealer</h2><div class='card'><form action='/settings' method='post'>{inputs}<button type='submit'>Enregistrer</button></form></div>"
     return layout("Paramètres", content)
 
-
 @app.post("/settings")
 def save_settings(
     parts_margin_percent: float = Form(...),
@@ -577,12 +560,10 @@ def save_settings(
     set_setting("indexation_percent", indexation_percent)
     return RedirectResponse(url="/settings", status_code=303)
 
-
 @app.get("/quote/{quote_id}/export")
 def export_quote(quote_id: int):
     regenerate_quote(quote_id)
     return RedirectResponse(url="/", status_code=303)
-
 
 @app.get("/exports/{filename}")
 def get_export(filename: str):
@@ -591,8 +572,6 @@ def get_export(filename: str):
         return HTMLResponse(layout("Introuvable", f"<div class='error'>Fichier introuvable : {filename}</div>"), status_code=404)
     return FileResponse(path)
 
-
-
 # --- Permanent package routes - added by install_packages_permanent.py ---
 from fastapi.responses import HTMLResponse as _PkgHTMLResponse, RedirectResponse as _PkgRedirectResponse
 from package_model import (
@@ -600,7 +579,6 @@ from package_model import (
     ensure_package_schema as _pkg_ensure_package_schema,
     get_package_status as _pkg_get_package_status,
 )
-
 
 def _pkg_panel_html(quote_id: int):
     _pkg_ensure_package_schema()
@@ -691,12 +669,10 @@ def _pkg_panel_html(quote_id: int):
     </style>
     """
 
-
 @app.get("/quote/{quote_id}/package/apply/{package_key}")
 def quote_package_apply_permanent(quote_id: int, package_key: str):
     _pkg_apply_package_to_quote(quote_id, package_key)
     return _PkgRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
-
 
 @app.get("/quote/{quote_id}/packages", response_class=_PkgHTMLResponse)
 def quote_packages_permanent_page(quote_id: int):
@@ -746,7 +722,6 @@ def quote_packages_permanent_page(quote_id: int):
     </html>
     """
 
-
 @app.middleware("http")
 async def _pkg_inject_panel_middleware(request, call_next):
     response = await call_next(request)
@@ -795,8 +770,6 @@ async def _pkg_inject_panel_middleware(request, call_next):
     return _PkgHTMLResponse(content=html, status_code=response.status_code, headers=headers)
 # --- End permanent package routes ---
 
-
-
 # --- Shutdown route - added by install_shutdown_button.py ---
 import os as _shutdown_os
 import threading as _shutdown_threading
@@ -814,7 +787,6 @@ from dealer_discount_settings import (
     reset_dealer_discount_codes as _dd_reset_codes,
     update_dealer_discount_codes as _dd_update_codes,
 )
-
 
 @app.get("/dealer-discounts", response_class=_DealerDiscountHTMLResponse)
 def dealer_discounts_page():
@@ -989,21 +961,17 @@ def dealer_discounts_page():
     </html>
     """
 
-
 @app.post("/dealer-discounts")
 async def dealer_discounts_save(request: _DealerDiscountRequest):
     form = await request.form()
     _dd_update_codes(form)
     return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
 
-
 @app.get("/dealer-discounts/reset")
 def dealer_discounts_reset():
     _dd_reset_codes()
     return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
 # --- End dealer discount settings routes ---
-
-
 
 # --- Quote options by DSP price - added by install_options_by_dsp_price.py ---
 from pathlib import Path as _OptionPath
@@ -1024,7 +992,6 @@ from price_catalog_model import (
     import_dsp_price_file as _price_catalog_import,
     search_catalog as _price_catalog_search,
 )
-
 
 @app.get("/price-catalog", response_class=_OptionHTMLResponse)
 def price_catalog_page(q: str = ""):
@@ -1050,7 +1017,7 @@ def price_catalog_page(q: str = ""):
     <html lang="fr">
     <head>
         <meta charset="utf-8">
-        <title>Catalogue prix DSP</title>
+        <title>Import price list</title>
         <style>
             body {{ font-family: Arial, sans-serif; margin: 26px; background: #f6f3ea; color: #172033; }}
             a {{ color: #102033; font-weight: 700; text-decoration: none; }}
@@ -1065,7 +1032,7 @@ def price_catalog_page(q: str = ""):
         </style>
     </head>
     <body>
-        <h1>Catalogue prix DSP</h1>
+        <h1>Import price list</h1>
         <p><a href="/">Accueil</a></p>
 
         <div class="panel">
@@ -1106,7 +1073,6 @@ def price_catalog_page(q: str = ""):
     </html>
     """
 
-
 @app.post("/price-catalog/upload")
 async def price_catalog_upload(file: _OptionUploadFile = _OptionFile(...)):
     upload_dir = BASE_DIR / "data" / "uploads"
@@ -1133,7 +1099,6 @@ async def price_catalog_upload(file: _OptionUploadFile = _OptionFile(...)):
     </body>
     </html>
     """)
-
 
 def _options_section_html(quote_id: int):
     rows = _opt_get_options(quote_id)
@@ -1359,25 +1324,21 @@ def _options_section_html(quote_id: int):
     </style>
     """
 
-
 @app.get("/quote/{quote_id}/options/add")
 def quote_options_add(quote_id: int):
     _opt_add_line(quote_id)
     return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
-
 
 @app.get("/quote/{quote_id}/options/delete/{option_id}")
 def quote_options_delete(quote_id: int, option_id: int):
     _opt_delete_line(quote_id, option_id)
     return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
 
-
 @app.post("/quote/{quote_id}/options/save")
 async def quote_options_save(quote_id: int, request: _OptionRequest):
     form = await request.form()
     _opt_update_from_form(quote_id, form)
     return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
-
 
 @app.middleware("http")
 async def _options_section_middleware(request, call_next):
@@ -1424,7 +1385,6 @@ async def _options_section_middleware(request, call_next):
         headers=headers,
     )
 # --- End quote options by DSP price ---
-
 
 if __name__ == "__main__":
     import uvicorn
