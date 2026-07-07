@@ -785,190 +785,6 @@ import time as _shutdown_time
 
 from fastapi.responses import HTMLResponse as _ShutdownHTMLResponse
 
-
-def _shutdown_button_html():
-    return """
-    <div class="shutdown-bar">
-        <a class="shutdown-btn" href="/shutdown/confirm">Quitter le logiciel</a>
-    </div>
-    <style>
-        .shutdown-bar {
-            position: fixed;
-            right: 18px;
-            bottom: 18px;
-            z-index: 99999;
-            font-family: Arial, sans-serif;
-        }
-        .shutdown-btn {
-            display: inline-block;
-            padding: 10px 14px;
-            border-radius: 999px;
-            background: #7a1f1f;
-            color: white !important;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 700;
-            box-shadow: 0 6px 18px rgba(0,0,0,0.22);
-        }
-        .shutdown-btn:hover {
-            background: #9f2525;
-        }
-    </style>
-    """
-
-
-def _shutdown_process_soon():
-    def _stop():
-        _shutdown_time.sleep(0.8)
-        _shutdown_os._exit(0)
-
-    _shutdown_threading.Thread(target=_stop, daemon=True).start()
-
-
-@app.get("/shutdown/confirm", response_class=_ShutdownHTMLResponse)
-def shutdown_confirm_page():
-    return """
-    <!doctype html>
-    <html lang="fr">
-    <head>
-        <meta charset="utf-8">
-        <title>Quitter Dealer Quote Manager</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: #f6f3ea;
-                color: #172033;
-                margin: 0;
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .card {
-                background: white;
-                border: 1px solid #d9c98b;
-                border-radius: 18px;
-                padding: 28px;
-                max-width: 520px;
-                box-shadow: 0 8px 26px rgba(0,0,0,0.12);
-                text-align: center;
-            }
-            h1 { margin-top: 0; }
-            .actions {
-                display: flex;
-                justify-content: center;
-                gap: 12px;
-                margin-top: 22px;
-            }
-            a {
-                display: inline-block;
-                padding: 11px 16px;
-                border-radius: 12px;
-                text-decoration: none;
-                font-weight: 700;
-            }
-            .quit { background: #7a1f1f; color: white; }
-            .back { background: #102033; color: white; }
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <h1>Quitter le logiciel ?</h1>
-            <p>Cette action arrête le serveur local Dealer Quote Manager et libère le port 8000.</p>
-            <div class="actions">
-                <a class="quit" href="/shutdown">Oui, quitter</a>
-                <a class="back" href="/">Annuler</a>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-
-
-@app.get("/shutdown", response_class=_ShutdownHTMLResponse)
-def shutdown_app():
-    _shutdown_process_soon()
-    return """
-    <!doctype html>
-    <html lang="fr">
-    <head>
-        <meta charset="utf-8">
-        <title>Dealer Quote Manager arrêté</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: #f6f3ea;
-                color: #172033;
-                margin: 0;
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .card {
-                background: white;
-                border: 1px solid #d9c98b;
-                border-radius: 18px;
-                padding: 28px;
-                max-width: 520px;
-                box-shadow: 0 8px 26px rgba(0,0,0,0.12);
-                text-align: center;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <h1>Logiciel arrêté</h1>
-            <p>Tu peux maintenant fermer cette page.</p>
-            <p>La fenêtre noire va se fermer automatiquement.</p>
-        </div>
-    </body>
-    </html>
-    """
-
-
-@app.middleware("http")
-async def _shutdown_button_middleware(request, call_next):
-    response = await call_next(request)
-
-    path = request.url.path
-    if path.startswith("/shutdown"):
-        return response
-
-    if response.status_code != 200:
-        return response
-
-    content_type = response.headers.get("content-type", "")
-    if "text/html" not in content_type:
-        return response
-
-    body = b""
-    async for chunk in response.body_iterator:
-        body += chunk
-
-    try:
-        html = body.decode("utf-8")
-    except Exception:
-        return response
-
-    button = _shutdown_button_html()
-
-    if "</body>" in html:
-        html = html.replace("</body>", button + "</body>", 1)
-    else:
-        html = html + button
-
-    headers = dict(response.headers)
-    headers.pop("content-length", None)
-
-    return _ShutdownHTMLResponse(
-        content=html,
-        status_code=response.status_code,
-        headers=headers,
-    )
-# --- End shutdown route ---
-
-
 # --- Dealer discount settings routes - no floating button ---
 from fastapi import Request as _DealerDiscountRequest
 from fastapi.responses import HTMLResponse as _DealerDiscountHTMLResponse, RedirectResponse as _DealerDiscountRedirectResponse
@@ -1167,6 +983,429 @@ def dealer_discounts_reset():
     _dd_reset_codes()
     return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
 # --- End dealer discount settings routes ---
+
+
+
+# --- Quote options by DSP price - added by install_options_by_dsp_price.py ---
+from pathlib import Path as _OptionPath
+import shutil as _option_shutil
+
+from fastapi import Request as _OptionRequest, UploadFile as _OptionUploadFile, File as _OptionFile
+from fastapi.responses import HTMLResponse as _OptionHTMLResponse, RedirectResponse as _OptionRedirectResponse
+
+from option_model import (
+    add_option_line as _opt_add_line,
+    delete_option_line as _opt_delete_line,
+    format_money as _opt_format_money,
+    get_quote_options as _opt_get_options,
+    update_options_from_form as _opt_update_from_form,
+)
+from price_catalog_model import (
+    get_catalog_count as _price_catalog_count,
+    import_dsp_price_file as _price_catalog_import,
+    search_catalog as _price_catalog_search,
+)
+
+
+@app.get("/price-catalog", response_class=_OptionHTMLResponse)
+def price_catalog_page(q: str = ""):
+    status = _price_catalog_count()
+    results = _price_catalog_search(q, 40) if q else []
+
+    result_rows = ""
+    for row in results:
+        result_rows += f"""
+        <tr>
+            <td>{row['part_no']}</td>
+            <td>{row['description']}</td>
+            <td class="right">{_opt_format_money(row['price_excl_vat'])}</td>
+            <td>{row['discount_code'] or ''}</td>
+        </tr>
+        """
+
+    if q and not result_rows:
+        result_rows = '<tr><td colspan="4" class="empty">Aucun résultat.</td></tr>'
+
+    return f"""
+    <!doctype html>
+    <html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <title>Catalogue prix DSP</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 26px; background: #f6f3ea; color: #172033; }}
+            a {{ color: #102033; font-weight: 700; text-decoration: none; }}
+            .panel {{ background: white; border: 1px solid #d9c98b; border-radius: 16px; padding: 18px; margin-bottom: 18px; }}
+            input {{ padding: 9px; border: 1px solid #d9d2b5; border-radius: 8px; }}
+            button, .button {{ border: 0; border-radius: 10px; padding: 10px 14px; background: #102033; color: white !important; font-weight: 700; cursor: pointer; text-decoration: none; }}
+            table {{ width: 100%; border-collapse: collapse; background: white; }}
+            th {{ background: #102033; color: white; text-align: left; padding: 8px; }}
+            td {{ border-bottom: 1px solid #e6e0c8; padding: 8px; }}
+            .right {{ text-align: right; }}
+            .empty {{ text-align: center; color: #667085; }}
+        </style>
+    </head>
+    <body>
+        <h1>Catalogue prix DSP</h1>
+        <p><a href="/">Accueil</a></p>
+
+        <div class="panel">
+            <b>Catalogue actuel :</b> {status['count']} références<br>
+            <b>Dernier fichier :</b> {status['source_file'] or '-'}<br>
+            <b>Dernière mise à jour :</b> {status['updated_at'] or '-'}
+        </div>
+
+        <div class="panel">
+            <h2>Importer le fichier prix DSP</h2>
+            <form method="post" action="/price-catalog/upload" enctype="multipart/form-data">
+                <input type="file" name="file" accept=".xlsx,.xlsm,.xls">
+                <button type="submit">Importer le catalogue prix</button>
+            </form>
+            <p>Colonnes attendues : Part No, Description, Price excl VAT, Discount Code.</p>
+        </div>
+
+        <div class="panel">
+            <h2>Rechercher une référence</h2>
+            <form method="get" action="/price-catalog">
+                <input name="q" value="{q}" placeholder="Référence ou désignation">
+                <button type="submit">Rechercher</button>
+            </form>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Part No</th>
+                    <th>Désignation</th>
+                    <th>Prix excl VAT</th>
+                    <th>DC</th>
+                </tr>
+            </thead>
+            <tbody>{result_rows}</tbody>
+        </table>
+    </body>
+    </html>
+    """
+
+
+@app.post("/price-catalog/upload")
+async def price_catalog_upload(file: _OptionUploadFile = _OptionFile(...)):
+    upload_dir = BASE_DIR / "data" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = file.filename.replace("/", "_").replace("\\", "_")
+    target = upload_dir / safe_name
+
+    with target.open("wb") as buffer:
+        _option_shutil.copyfileobj(file.file, buffer)
+
+    result = _price_catalog_import(target)
+
+    return _OptionHTMLResponse(f"""
+    <!doctype html>
+    <html lang="fr">
+    <head><meta charset="utf-8"><title>Catalogue importé</title></head>
+    <body style="font-family:Arial;margin:28px;">
+        <h1>Catalogue prix importé</h1>
+        <p>Fichier : <b>{result['source_file']}</b></p>
+        <p>Références importées : <b>{result['imported']}</b></p>
+        <p>Lignes ignorées : <b>{result['skipped']}</b></p>
+        <p><a href="/price-catalog">Retour catalogue</a></p>
+        <p><a href="/">Accueil</a></p>
+    </body>
+    </html>
+    """)
+
+
+def _options_section_html(quote_id: int):
+    rows = _opt_get_options(quote_id)
+    catalog = _price_catalog_count()
+
+    if rows:
+        option_rows = []
+        for row in rows:
+            checked = "checked" if row["included"] else ""
+            travel_yes = "selected" if str(row["extra_travel"]).lower() in ("yes", "oui", "include", "included") else ""
+            travel_exclude = "" if travel_yes else "selected"
+            option_id = row["id"]
+            reference = row["option_reference"] or ""
+
+            found_badge = ""
+            if reference and row["service_name"]:
+                found_badge = "<div class='ok'>trouvé</div>"
+            elif reference:
+                found_badge = "<div class='bad'>non trouvé</div>"
+
+            option_rows.append(f"""
+                <tr>
+                    <td class="center">
+                        <input type="checkbox" name="included_{option_id}" {checked}>
+                    </td>
+                    <td>
+                        <input name="option_reference_{option_id}" value="{reference}" placeholder="Part No">
+                        {found_badge}
+                    </td>
+                    <td>
+                        <input name="service_name_{option_id}" value="{row['service_name'] or ''}" placeholder="Désignation récupérée">
+                    </td>
+                    <td>
+                        <input class="small" name="option_discount_code_{option_id}" value="{row['option_discount_code'] or ''}" placeholder="DC">
+                    </td>
+                    <td>
+                        <input class="num" name="unit_price_{option_id}" value="{row['unit_price'] or 0}" readonly>
+                    </td>
+                    <td>
+                        <input class="num" name="quantity_{option_id}" value="{row['quantity'] or 1}">
+                    </td>
+                    <td>
+                        <input class="num" name="work_time_hours_{option_id}" value="{row['work_time_hours'] or 0}">
+                    </td>
+                    <td>
+                        <input class="num" name="fixed_price_{option_id}" value="{row['fixed_price'] or 0}">
+                    </td>
+                    <td>
+                        <select name="extra_travel_{option_id}">
+                            <option value="Exclude" {travel_exclude}>Exclude</option>
+                            <option value="Yes" {travel_yes}>Yes</option>
+                        </select>
+                    </td>
+                    <td class="right"><b>{_opt_format_money(row['calculated_price'] or 0)}</b></td>
+                    <td>
+                        <input name="notes_{option_id}" value="{row['notes'] or ''}" placeholder="Commentaire">
+                    </td>
+                    <td class="center">
+                        <a class="delete" href="/quote/{quote_id}/options/delete/{option_id}">Supprimer</a>
+                    </td>
+                </tr>
+            """)
+        body = "".join(option_rows)
+    else:
+        body = """
+            <tr>
+                <td colspan="12" class="empty">
+                    Aucune option ajoutée. Clique sur + Ajouter une option.
+                </td>
+            </tr>
+        """
+
+    return f"""
+    <div class="options-panel">
+        <div class="options-title">
+            <div>
+                <h2>Options</h2>
+                <p>
+                    La colonne <b>Service</b> appelle une référence du fichier DSP price :
+                    Part No → Désignation → Prix excl VAT → DC.
+                </p>
+                <p class="catalog-status">
+                    Catalogue prix : <b>{catalog['count']}</b> références
+                    {f" / {catalog['source_file']}" if catalog['source_file'] else ""}
+                    — <a href="/price-catalog">Importer / rechercher catalogue</a>
+                </p>
+            </div>
+            <a class="add-option" href="/quote/{quote_id}/options/add">+ Ajouter une option</a>
+        </div>
+
+        <form method="post" action="/quote/{quote_id}/options/save">
+            <table class="options-table">
+                <thead>
+                    <tr>
+                        <th>Inclure</th>
+                        <th>Service / Référence</th>
+                        <th>ID source / Désignation</th>
+                        <th>DC</th>
+                        <th>Prix Excel</th>
+                        <th>Qté</th>
+                        <th>Temps h</th>
+                        <th>Prix fixe</th>
+                        <th>Travel</th>
+                        <th>Calculé</th>
+                        <th>Notes</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>{body}</tbody>
+            </table>
+
+            <div class="options-actions">
+                <button type="submit">Actualiser et recalculer</button>
+            </div>
+        </form>
+    </div>
+
+    <style>
+        .options-panel {{
+            margin: 28px 0 18px 0;
+            padding: 18px;
+            border-radius: 16px;
+            border: 1px solid #d9c98b;
+            background: #fffaf0;
+            box-shadow: 0 5px 18px rgba(16, 32, 51, 0.08);
+            font-family: Arial, sans-serif;
+        }}
+        .options-title {{
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 12px;
+        }}
+        .options-title h2 {{
+            margin: 0;
+            color: #102033;
+        }}
+        .options-title p {{
+            margin: 5px 0 0 0;
+            color: #667085;
+            font-size: 13px;
+        }}
+        .catalog-status a {{
+            color: #102033;
+            font-weight: 700;
+        }}
+        .add-option {{
+            display: inline-block;
+            padding: 10px 14px;
+            border-radius: 999px;
+            background: #102033;
+            color: white !important;
+            text-decoration: none;
+            font-weight: 700;
+            white-space: nowrap;
+        }}
+        .options-table {{
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            font-size: 12px;
+        }}
+        .options-table th {{
+            background: #102033;
+            color: white;
+            text-align: left;
+            padding: 8px;
+        }}
+        .options-table td {{
+            border-bottom: 1px solid #e6e0c8;
+            padding: 6px;
+            vertical-align: top;
+        }}
+        .options-table input,
+        .options-table select {{
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #d9d2b5;
+            border-radius: 7px;
+            padding: 7px;
+            font-size: 12px;
+            background: #fffdf7;
+        }}
+        .options-table .num {{
+            text-align: right;
+            min-width: 70px;
+        }}
+        .options-table .small {{
+            max-width: 65px;
+        }}
+        .center {{ text-align: center; }}
+        .right {{ text-align: right; }}
+        .delete {{
+            color: #7a1f1f;
+            font-weight: 700;
+            text-decoration: none;
+            font-size: 12px;
+        }}
+        .empty {{
+            text-align: center;
+            color: #667085;
+            padding: 16px !important;
+        }}
+        .ok {{ color: #067647; font-size: 11px; margin-top: 3px; font-weight: 700; }}
+        .bad {{ color: #B42318; font-size: 11px; margin-top: 3px; font-weight: 700; }}
+        .options-actions {{
+            margin-top: 14px;
+            display: flex;
+            justify-content: flex-end;
+        }}
+        .options-actions button {{
+            border: 0;
+            border-radius: 10px;
+            padding: 11px 15px;
+            background: #102033;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+        }}
+    </style>
+    """
+
+
+@app.get("/quote/{quote_id}/options/add")
+def quote_options_add(quote_id: int):
+    _opt_add_line(quote_id)
+    return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
+
+
+@app.get("/quote/{quote_id}/options/delete/{option_id}")
+def quote_options_delete(quote_id: int, option_id: int):
+    _opt_delete_line(quote_id, option_id)
+    return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
+
+
+@app.post("/quote/{quote_id}/options/save")
+async def quote_options_save(quote_id: int, request: _OptionRequest):
+    form = await request.form()
+    _opt_update_from_form(quote_id, form)
+    return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
+
+
+@app.middleware("http")
+async def _options_section_middleware(request, call_next):
+    response = await call_next(request)
+
+    path = request.url.path
+    if response.status_code != 200:
+        return response
+
+    if not (path.endswith("/services") and path.startswith("/quote/")):
+        return response
+
+    try:
+        quote_id = int(path.strip("/").split("/")[1])
+    except Exception:
+        return response
+
+    content_type = response.headers.get("content-type", "")
+    if "text/html" not in content_type:
+        return response
+
+    body = b""
+    async for chunk in response.body_iterator:
+        body += chunk
+
+    try:
+        html = body.decode("utf-8")
+    except Exception:
+        return response
+
+    section = _options_section_html(quote_id)
+
+    if "</body>" in html:
+        html = html.replace("</body>", section + "</body>", 1)
+    else:
+        html = html + section
+
+    headers = dict(response.headers)
+    headers.pop("content-length", None)
+
+    return _OptionHTMLResponse(
+        content=html,
+        status_code=response.status_code,
+        headers=headers,
+    )
+# --- End quote options by DSP price ---
 
 
 if __name__ == "__main__":
