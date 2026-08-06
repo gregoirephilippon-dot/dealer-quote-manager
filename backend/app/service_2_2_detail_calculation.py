@@ -109,6 +109,70 @@ def _is_additional_material(component: Any) -> bool:
     )
 
 
+
+def _overview_total_time_hours(wb) -> float:
+    """
+    Temps h de la ligne 2.2.
+
+    Source :
+    Overview / Présentation
+    colonne Total Time / Temps coût total
+    """
+    ws = _get_sheet_any(
+        wb,
+        [
+            "Overview",
+            "Présentation",
+            "Presentation",
+            "Aperçu",
+            "Apercu",
+            "Synthèse",
+            "Synthese",
+        ],
+    )
+    if ws is None:
+        return 0.0
+
+    aliases = {
+        _normalize("Total Time"),
+        _normalize("Total Time Cost"),
+        _normalize("Temps coût total"),
+        _normalize("Temps cout total"),
+        _normalize("Temps total"),
+        _normalize("Durée totale"),
+        _normalize("Duree totale"),
+    }
+
+    header_row = None
+    total_time_col = None
+
+    for row in range(1, min(ws.max_row, 40) + 1):
+        for col in range(1, ws.max_column + 1):
+            if _normalize(ws.cell(row, col).value) in aliases:
+                header_row = row
+                total_time_col = col
+                break
+        if total_time_col:
+            break
+
+    if not total_time_col:
+        return 0.0
+
+    for row in range(header_row + 1, ws.max_row + 1):
+        if _normalize(ws.cell(row, 1).value) == "total":
+            value = _to_float(ws.cell(row, total_time_col).value)
+            if value is not None:
+                return value
+
+    total = 0.0
+    for row in range(header_row + 1, ws.max_row + 1):
+        value = _to_float(ws.cell(row, total_time_col).value)
+        if value is not None:
+            total += value
+
+    return total
+
+
 def calculate_service_2_2_from_excel(excel_path: str | Path) -> dict[str, Any]:
     wb = load_workbook(excel_path, read_only=True, data_only=True)
 
@@ -175,6 +239,8 @@ def calculate_service_2_2_from_excel(excel_path: str | Path) -> dict[str, Any]:
 
         first_page = _get_first_page_totals(wb)
 
+        total_time_hours = _overview_total_time_hours(wb)
+
         detail_total = labour_total + material_total + additional_material_total + first_page.get("first_page_misc", 0.0)
         first_total = first_page.get("first_page_total", 0.0)
         diff = detail_total - first_total if first_total else 0.0
@@ -204,6 +270,7 @@ def calculate_service_2_2_from_excel(excel_path: str | Path) -> dict[str, Any]:
             "labour_rows": labour_rows,
             "material_rows": material_rows,
             "additional_rows": additional_rows,
+            "total_time_hours": total_time_hours,
             "source_note": source_note,
         }
     finally:
@@ -232,8 +299,8 @@ def apply_service_2_2_detail_calculation(quote_id: int, excel_path: str | Path) 
         update_values = {
             "service_name": "Maintenance parts & labour",
             "service_group": "2. Maintenance",
-            "work_time_hours": result["labour_total"],
-            "quantity": result["material_rows"],
+            "work_time_hours": result.get("total_time_hours", 0.0),
+            "quantity": 1.0,
             "unit_price": 0.0,
             "fixed_price": total,
             "calculated_price": total,
