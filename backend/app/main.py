@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from database import get_connection, init_db
 from settings import ensure_default_settings, get_settings_dict, set_setting
 from service_catalog import SERVICE_CATALOG
+from service_2_2_detail_calculation import apply_service_2_2_detail_calculation
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -328,6 +329,7 @@ def import_file(file: UploadFile = File(...)):
         try:
             from overview_total_sync import apply_overview_total_to_service_2_2
             overview_totals = apply_overview_total_to_service_2_2(quote_id, upload_path)
+            service_2_2_detail = apply_service_2_2_detail_calculation(quote_id, upload_path)
             print(f"Overview C -> service 2.2 : {overview_totals}")
         except Exception as exc:
             print(f"Attention : impossible de remonter Overview C vers 2.2 : {exc}")
