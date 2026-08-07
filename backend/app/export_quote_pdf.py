@@ -283,14 +283,25 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         ],
     )
 
+    total_cost = quote["total_cost"] or 0
+    selling_total = quote["selling_total"] or 0
+    total_hours = quote["total_hours"] or 0
+
+    cost_per_hour = total_cost / total_hours if total_hours else None
+    margin_amount = selling_total - total_cost
+    margin_percent = (margin_amount / total_cost * 100) if total_cost else None
+    margin_percent_txt = f"{margin_percent:.2f} %" if margin_percent is not None else "-"
+
     story.append(Paragraph("Synthese financiere", styles["Section"]))
     add_kv_table(
         story,
         [
             ["Cout brut importe", money(quote["total_cost"], currency), "Prix client", money(quote["selling_total"], currency)],
-            ["Prix mensuel", money(quote["selling_monthly"], currency), "Prix par heure", money(quote["selling_per_hour"], currency) + "/h"],
+            ["Cout importe / h", money(cost_per_hour, currency) + "/h", "Prix client / h", money(quote["selling_per_hour"], currency) + "/h"],
+            ["Marge", money(margin_amount, currency), "Taux de marge", margin_percent_txt],
+            ["Prix mensuel", money(quote["selling_monthly"], currency), "Services inclus", str(len(services))],
             ["Pieces", money(quote["total_parts"], currency), "Main d'oeuvre", money(quote["total_labour"], currency)],
-            ["Misc", money(quote["total_misc"], currency), "Services inclus", str(len(services))],
+            ["Misc", money(quote["total_misc"], currency), "", ""],
         ],
     )
 
