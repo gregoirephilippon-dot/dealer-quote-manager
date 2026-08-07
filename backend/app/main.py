@@ -195,6 +195,112 @@ def ensure_quote_services(quote_id):
             )
         conn.commit()
 
+
+def get_feedback_webhook_url():
+    path = DATA_DIR / "feedback_webhook_url.txt"
+    if path.exists():
+        return path.read_text(encoding="utf-8-sig").strip()
+    return ""
+
+
+def save_feedback_local(payload):
+    import csv
+    from datetime import datetime
+
+    feedback_dir = DATA_DIR / "feedback"
+    feedback_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_path = feedback_dir / "retours_experience.csv"
+    exists = csv_path.exists()
+
+    fieldnames = [
+        "created_at",
+        "user_name",
+        "page_context",
+        "feedback_type",
+        "rating",
+        "quote_id",
+        "message",
+        "suggestion",
+        "priority",
+        "app_version",
+    ]
+
+    row = {"created_at": datetime.now().isoformat(timespec="seconds")}
+    row.update(payload)
+
+    with csv_path.open("a", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=";")
+        if not exists:
+            writer.writeheader()
+        writer.writerow(row)
+
+    return csv_path
+
+
+def send_feedback_to_google_sheet(payload):
+    """
+    Envoi optionnel vers Google Sheet via Apps Script.
+    Si data/feedback_webhook_url.txt n'existe pas, on sauvegarde seulement en local.
+    """
+    url = get_feedback_webhook_url()
+    if not url:
+        return False, "Webhook Google Sheet non configuré"
+
+    try:
+        import json
+        import urllib.request
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            response.read()
+        return True, "Envoyé vers Google Sheet"
+    except Exception as exc:
+        return False, str(exc)
+
+
+@app.post("/feedback")
+def feedback_submit(
+    user_name: str = Form(""),
+    page_context: str = Form(""),
+    feedback_type: str = Form(""),
+    rating: str = Form(""),
+    quote_id: str = Form(""),
+    message: str = Form(""),
+    suggestion: str = Form(""),
+    priority: str = Form(""),
+):
+    payload = {
+        "user_name": user_name.strip(),
+        "page_context": page_context.strip(),
+        "feedback_type": feedback_type.strip(),
+        "rating": rating.strip(),
+        "quote_id": quote_id.strip(),
+        "message": message.strip(),
+        "suggestion": suggestion.strip(),
+        "priority": priority.strip(),
+        "app_version": "test",
+    }
+
+    try:
+        save_feedback_local(payload)
+    except PermissionError:
+        # CSV ouvert/verrouillé, par exemple dans Excel.
+        # On n'empêche pas l'envoi vers Google Sheet.
+        pass
+
+    send_feedback_to_google_sheet(payload)
+
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/", status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 def home():
     init_db()
@@ -202,7 +308,7 @@ def home():
         rows = conn.execute(
             """
             SELECT id, created_at, status, customer_name, product_designation, engine_serial_number,
-                   currency, total_cost, selling_total, selling_monthly, selling_per_hour
+                   currency, total_cost, selling_total, selling_monthly, selling_per_hour, total_hours
             FROM quotes
             ORDER BY id DESC
             """
@@ -212,6 +318,20 @@ def home():
     for row in rows:
         currency = row["currency"] or "EUR"
         quote_id = row["id"]
+
+        total_cost = row["total_cost"] or 0
+        selling_total = row["selling_total"] or 0
+        total_hours = row["total_hours"] or 0
+
+        cost_per_hour = total_cost / total_hours if total_hours else None
+        margin_amount = selling_total - total_cost
+        margin_percent = (margin_amount / total_cost * 100) if total_cost else None
+
+        cost_per_hour_txt = f"{fmt_money(cost_per_hour, currency)}/h" if cost_per_hour is not None else "-"
+        selling_per_hour_txt = f"{fmt_money(row['selling_per_hour'], currency)}/h" if row["selling_per_hour"] is not None else "-"
+        margin_amount_txt = fmt_money(margin_amount, currency)
+        margin_percent_txt = f"{margin_percent:.2f} %" if margin_percent is not None else "-"
+
         pdf_path = EXPORT_DIR / f"quote_{quote_id}.pdf"
         html_path = EXPORT_DIR / f"quote_{quote_id}.html"
         pdf_link = f'<a class="button gold" href="/exports/quote_{quote_id}.pdf" target="_blank">PDF</a>' if pdf_path.exists() else ""
@@ -223,7 +343,11 @@ def home():
             <td>{row['customer_name'] or '-'}</td><td>{row['product_designation'] or '-'}</td>
             <td>{row['engine_serial_number'] or '-'}</td><td>{fmt_money(row['total_cost'], currency)}</td>
             <td><strong>{fmt_money(row['selling_total'], currency)}</strong></td>
-            <td>{fmt_money(row['selling_monthly'], currency)}</td><td>{fmt_money(row['selling_per_hour'], currency)}/h</td>
+            <td>{fmt_money(row['selling_monthly'], currency)}</td>
+            <td>{cost_per_hour_txt}</td>
+            <td><strong>{selling_per_hour_txt}</strong></td>
+            <td><strong>{margin_amount_txt}</strong></td>
+            <td><strong>{margin_percent_txt}</strong></td>
             <td class="actions">
                 <a class="button green" href="/quote/{quote_id}/inputs">Inputs</a>
                 <a class="button" href="/quote/{quote_id}/services">Services & temps</a>
@@ -233,16 +357,102 @@ def home():
         </tr>"""
 
     if not rows_html:
-        rows_html = '<tr><td colspan="11">Aucun devis pour le moment. Commence par importer un fichier Excel.</td></tr>'
+        rows_html = '<tr><td colspan="14">Aucun devis pour le moment. Commence par importer un fichier Excel.</td></tr>'
 
     content = f"""
     <h2>Historique des devis</h2>
     <div class="card">
         <a class="button" href="/import">Importer un nouveau fichier Service Calculator</a>
-        
+        <button class="button secondary" type="button" onclick="document.getElementById('feedbackModal').style.display='block'">Retour d'expérience</button>
+    </div>
+
+    <div id="feedbackModal" style="display:none; position:fixed; z-index:9999; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.45);">
+        <div style="background:#fff; color:#111; max-width:720px; margin:5% auto; padding:22px; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,0.25);">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <h3 style="margin:0;">Retour d'expérience logiciel</h3>
+                <button class="button secondary" type="button" onclick="document.getElementById('feedbackModal').style.display='none'">Fermer</button>
+            </div>
+
+            <form method="post" action="/feedback" style="margin-top:18px;">
+                <div class="grid">
+                    <label>Nom utilisateur
+                        <input name="user_name" placeholder="Nom / testeur">
+                    </label>
+
+                    <label>Page concernée
+                        <select name="page_context">
+                            <option>Historique</option>
+                            <option>Import</option>
+                            <option>Services & temps</option>
+                            <option>PDF</option>
+                            <option>Paramètres dealer</option>
+                            <option>Remise dealer</option>
+                            <option>Autre</option>
+                        </select>
+                    </label>
+
+                    <label>Type de retour
+                        <select name="feedback_type">
+                            <option>Bug</option>
+                            <option>Suggestion</option>
+                            <option>Compréhension</option>
+                            <option>Calcul</option>
+                            <option>Affichage</option>
+                            <option>PDF</option>
+                            <option>Import Excel</option>
+                        </select>
+                    </label>
+
+                    <label>Note /10
+                        <input name="rating" type="number" min="0" max="10" step="1">
+                    </label>
+
+                    <label>Devis ID concerné
+                        <input name="quote_id" placeholder="ex : 23">
+                    </label>
+
+                    <label>Priorité
+                        <select name="priority">
+                            <option>Basse</option>
+                            <option>Moyenne</option>
+                            <option>Haute</option>
+                            <option>Bloquant</option>
+                        </select>
+                    </label>
+                </div>
+
+                <label>Message / problème rencontré
+                    <textarea name="message" rows="5" placeholder="Décrire le retour d'expérience"></textarea>
+                </label>
+
+                <label>Suggestion / amélioration proposée
+                    <textarea name="suggestion" rows="3" placeholder="Idée ou correction souhaitée"></textarea>
+                </label>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
+                    <button class="button secondary" type="button" onclick="document.getElementById('feedbackModal').style.display='none'">Annuler</button>
+                    <button class="button green" type="submit">Envoyer</button>
+                </div>
+            </form>
+        </div>
     </div>
     <table>
-        <thead><tr><th>ID</th><th>Date</th><th>Statut</th><th>Client</th><th>Moteur</th><th>Serial</th><th>Coût brut</th><th>Prix client</th><th>Mensuel</th><th>€/h</th><th>Actions</th></tr></thead>
+        <thead><tr>
+            <th>ID</th>
+            <th>Date</th>
+            <th>Statut</th>
+            <th>Client</th>
+            <th>Moteur</th>
+            <th>Serial</th>
+            <th>Cout brut</th>
+            <th>Prix client</th>
+            <th>Mensuel</th>
+            <th>Cout/h</th>
+            <th>Prix client/h</th>
+            <th>Marge EUR</th>
+            <th>Marge %</th>
+            <th>Actions</th>
+        </tr></thead>
         <tbody>{rows_html}</tbody>
     </table>"""
     return layout("Historique", content)
