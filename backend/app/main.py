@@ -370,6 +370,188 @@ def health_check():
     }
 
 
+
+
+@app.get("/server/identity", response_class=HTMLResponse)
+def server_identity_page():
+    import server_user_model as identity
+    from server_identity import get_role_label
+
+    identity.init_server_identity_tables()
+
+    companies = identity.list_companies()
+    users = identity.list_users()
+    accesses = identity.list_company_access()
+
+    def esc(value):
+        import html
+        return html.escape(str(value)) if value is not None else ""
+
+    companies_rows = "".join(
+        f"""
+        <tr>
+            <td>{row['id']}</td>
+            <td>{esc(row['name'])}</td>
+            <td>{esc(row['slug'])}</td>
+            <td>{esc(row['status'])}</td>
+            <td>{esc(row['created_at'])}</td>
+        </tr>
+        """
+        for row in companies
+    ) or "<tr><td colspan='5'>Aucune société</td></tr>"
+
+    users_rows = "".join(
+        f"""
+        <tr>
+            <td>{row['id']}</td>
+            <td>{esc(row['email'])}</td>
+            <td>{esc(row['full_name'])}</td>
+            <td>{esc(row['status'])}</td>
+            <td>{esc(row['created_at'])}</td>
+        </tr>
+        """
+        for row in users
+    ) or "<tr><td colspan='5'>Aucun utilisateur</td></tr>"
+
+    access_rows = "".join(
+        f"""
+        <tr>
+            <td>{row['id']}</td>
+            <td>{esc(row['company_name'])}</td>
+            <td>{esc(row['user_email'])}</td>
+            <td>{esc(row['role'])}</td>
+            <td>{esc(get_role_label(row['role']))}</td>
+            <td>{esc(row['status'])}</td>
+        </tr>
+        """
+        for row in accesses
+    ) or "<tr><td colspan='6'>Aucun accès</td></tr>"
+
+    return f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Identité serveur - Dealer Quote Manager</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background: #f5f7fb;
+                color: #1f2937;
+                margin: 0;
+                padding: 30px;
+            }}
+            .container {{
+                max-width: 1200px;
+                margin: auto;
+            }}
+            h1 {{
+                margin-bottom: 5px;
+            }}
+            .muted {{
+                color: #6b7280;
+                margin-bottom: 25px;
+            }}
+            .card {{
+                background: white;
+                border-radius: 14px;
+                padding: 20px;
+                margin-bottom: 22px;
+                box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 12px;
+            }}
+            th, td {{
+                border-bottom: 1px solid #e5e7eb;
+                padding: 10px;
+                text-align: left;
+                font-size: 14px;
+            }}
+            th {{
+                background: #f9fafb;
+                font-weight: 700;
+            }}
+            .warning {{
+                background: #fff7ed;
+                border: 1px solid #fed7aa;
+                color: #9a3412;
+                padding: 12px 14px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+            }}
+            a {{
+                color: #2563eb;
+                text-decoration: none;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Identité serveur</h1>
+            <div class="muted">Lecture développement : sociétés, utilisateurs et rôles d'accès.</div>
+
+            <div class="warning">
+                Page temporaire non sécurisée. À protéger plus tard par login OWNER / SUPER_ADMIN / TECH_ADMIN.
+            </div>
+
+            <p><a href="/">← Retour accueil</a> | <a href="/health">Voir /health</a></p>
+
+            <div class="card">
+                <h2>Sociétés</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nom</th>
+                            <th>Slug</th>
+                            <th>Statut</th>
+                            <th>Création</th>
+                        </tr>
+                    </thead>
+                    <tbody>{companies_rows}</tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h2>Utilisateurs</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Email</th>
+                            <th>Nom</th>
+                            <th>Statut</th>
+                            <th>Création</th>
+                        </tr>
+                    </thead>
+                    <tbody>{users_rows}</tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h2>Accès société / utilisateur</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Société</th>
+                            <th>Utilisateur</th>
+                            <th>Rôle</th>
+                            <th>Libellé</th>
+                            <th>Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody>{access_rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
 @app.get("/", response_class=HTMLResponse)
 def home():
     init_db()
