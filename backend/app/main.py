@@ -337,6 +337,25 @@ def health_check():
         "feedback": config.FEEDBACK_DIR.exists(),
     }
 
+    identity_status = {
+        "enabled": False,
+        "companies": None,
+        "users": None,
+        "company_access": None,
+        "error": None,
+    }
+
+    try:
+        import server_user_model as identity
+
+        identity.init_server_identity_tables()
+        identity_status["enabled"] = True
+        identity_status["companies"] = len(identity.list_companies())
+        identity_status["users"] = len(identity.list_users())
+        identity_status["company_access"] = len(identity.list_company_access())
+    except Exception as exc:
+        identity_status["error"] = str(exc)
+
     return {
         "status": "ok",
         "app_name": config.APP_NAME,
@@ -347,6 +366,7 @@ def health_check():
         "database_status": db_status,
         "database_path": str(db_path) if db_path else None,
         "storage": storage_checks,
+        "identity": identity_status,
     }
 
 
