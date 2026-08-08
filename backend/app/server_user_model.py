@@ -83,6 +83,16 @@ def create_company(name: str, slug: str) -> int:
         return int(row["id"])
 
 
+
+def get_default_company_id() -> int:
+    """
+    Société active temporaire pour le développement local.
+    Plus tard, cette valeur viendra de l'utilisateur connecté.
+    """
+    init_server_identity_tables()
+    return create_company("Gwen Service", "gwen-service")
+
+
 def create_user(email: str, full_name: str = "") -> int:
     now = datetime.now().isoformat(timespec="seconds")
 
