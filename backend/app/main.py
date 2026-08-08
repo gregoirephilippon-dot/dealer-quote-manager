@@ -301,6 +301,55 @@ def feedback_submit(
     return RedirectResponse("/", status_code=303)
 
 
+
+
+@app.get("/health")
+def health_check():
+    from pathlib import Path
+    import sqlite3
+    import app_config as config
+
+    config.ensure_storage_dirs()
+
+    db_status = "unknown"
+    db_path = None
+
+    if config.DATABASE_URL.startswith("sqlite:///"):
+        db_relative = config.DATABASE_URL.replace("sqlite:///", "", 1)
+        db_path = config.BASE_DIR / db_relative
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("SELECT 1")
+            db_status = "ok"
+        except Exception as exc:
+            db_status = f"error: {exc}"
+    else:
+        db_status = "not_checked_yet"
+
+    storage_checks = {
+        "storage": config.STORAGE_DIR.exists(),
+        "uploads": config.UPLOAD_DIR.exists(),
+        "pdf": config.PDF_DIR.exists(),
+        "logos": config.LOGO_DIR.exists(),
+        "contracts": config.CONTRACT_DIR.exists(),
+        "signed": config.SIGNED_DIR.exists(),
+        "backups": config.BACKUP_DIR.exists(),
+        "feedback": config.FEEDBACK_DIR.exists(),
+    }
+
+    return {
+        "status": "ok",
+        "app_name": config.APP_NAME,
+        "app_version": config.APP_VERSION,
+        "app_env": config.APP_ENV,
+        "public_url": config.PUBLIC_URL,
+        "database_url": config.DATABASE_URL,
+        "database_status": db_status,
+        "database_path": str(db_path) if db_path else None,
+        "storage": storage_checks,
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def home():
     init_db()
