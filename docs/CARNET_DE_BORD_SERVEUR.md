@@ -94,3 +94,69 @@ Priorité 1 :
 - Google Agenda
 - atelier / magasin
 - campagnes Volvo pièces
+
+## Module maintenance logiciel
+
+### Objectif
+
+Prévoir dès la conception serveur un module permettant la maintenance technique du logiciel par une personne autorisée, qui ne sera pas forcément le créateur initial.
+
+Ce module est différent du Super Admin commercial.
+
+### Différence entre Super Admin et Maintenance
+
+SUPER_ADMIN :
+- gestion des sociétés clientes
+- gestion des licences
+- gestion des utilisateurs clients
+- activation ou suspension des accès
+- suivi commercial et administratif
+
+TECH_ADMIN :
+- état du serveur
+- version du logiciel
+- sauvegardes
+- journaux d'erreurs
+- espace disque
+- tests système
+- mode maintenance
+- suivi des mises à jour
+- diagnostic technique
+
+### Rôles internes à prévoir
+
+- OWNER : propriétaire / éditeur principal du logiciel
+- SUPER_ADMIN : administration clients, sociétés, licences
+- TECH_ADMIN : maintenance technique complète
+- TECH_SUPPORT : support technique limité
+- COMPANY_ADMIN : administrateur d'une société cliente
+- CONTRACT_MANAGER : utilisateur principal côté client
+- TESTER : utilisateur test limité
+
+### Fonctions futures du module maintenance
+
+- afficher la version installée
+- afficher l'état général du serveur
+- vérifier la connexion base de données
+- vérifier l'espace disque
+- consulter les dernières erreurs
+- vérifier les sauvegardes
+- tester l'envoi email
+- tester Google Agenda
+- tester la signature électronique plus tard
+- activer un mode maintenance
+- consulter le journal des mises à jour
+
+### Règle de confidentialité
+
+Un utilisateur de maintenance ne doit pas voir automatiquement toutes les données sensibles des clients.
+
+À terme, il faudra prévoir :
+- support niveau 1 sans accès aux marges ni PDF clients
+- support niveau 2 avec accès temporaire autorisé
+- accès complet réservé au propriétaire ou à un profil technique validé
+
+### Décision
+
+Le module maintenance n'est pas une fonction vendue aux clients.
+C'est un outil interne pour assurer la stabilité, les mises à jour et le support du logiciel.
