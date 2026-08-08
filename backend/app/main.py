@@ -680,14 +680,10 @@ def home():
     init_db()
 
     import server_user_model as identity
-    active_company_id = identity.get_default_company_id()
+    active_company_id = identity.get_active_company_id()
+    active_company_name = identity.get_active_company_name()
 
     with get_connection() as conn:
-        active_company = conn.execute(
-            "SELECT name FROM companies WHERE id = ?",
-            (active_company_id,),
-        ).fetchone()
-        active_company_name = active_company["name"] if active_company else f"Société ID {active_company_id}"
 
         rows = conn.execute(
             """

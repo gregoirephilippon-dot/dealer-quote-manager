@@ -93,6 +93,61 @@ def get_default_company_id() -> int:
     return create_company("Gwen Service", "gwen-service")
 
 
+
+def get_company_by_id(company_id: int):
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT id, name, slug, status FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+
+
+def get_active_company_file() -> Path:
+    return config.BASE_DIR / "data" / "server_active_company_id.txt"
+
+
+def set_active_company_id(company_id: int) -> int:
+    init_server_identity_tables()
+
+    company = get_company_by_id(company_id)
+    if company is None:
+        raise ValueError(f"Société introuvable : {company_id}")
+
+    active_file = get_active_company_file()
+    active_file.parent.mkdir(parents=True, exist_ok=True)
+    active_file.write_text(str(company_id), encoding="utf-8")
+
+    return company_id
+
+
+def get_active_company_id() -> int:
+    """
+    Société active temporaire en développement.
+    Plus tard, cette valeur viendra du login utilisateur.
+    """
+    init_server_identity_tables()
+
+    active_file = get_active_company_file()
+
+    if active_file.exists():
+        try:
+            company_id = int(active_file.read_text(encoding="utf-8").strip())
+            if get_company_by_id(company_id) is not None:
+                return company_id
+        except ValueError:
+            pass
+
+    default_company_id = get_default_company_id()
+    set_active_company_id(default_company_id)
+    return default_company_id
+
+
+def get_active_company_name() -> str:
+    company_id = get_active_company_id()
+    company = get_company_by_id(company_id)
+    return company["name"] if company else f"Société ID {company_id}"
+
+
 def create_user(email: str, full_name: str = "") -> int:
     now = datetime.now().isoformat(timespec="seconds")
 
