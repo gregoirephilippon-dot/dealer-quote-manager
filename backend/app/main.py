@@ -148,6 +148,7 @@ def layout(title, content):
         <a href="/settings">Paramètres dealer</a>
         <a href="/dealer-discounts">Remise dealer</a>
         <a href="/price-catalog">Import price list</a>
+        <a href="/server/company-switch">Changer société</a>
     </nav>
 </header>
 <main>{content}</main>
