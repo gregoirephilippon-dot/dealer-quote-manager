@@ -552,6 +552,129 @@ def server_identity_page():
     """
 
 
+
+
+@app.get("/server/identity/new", response_class=HTMLResponse)
+def server_identity_new_page():
+    from server_identity import ServerRole, get_role_label
+
+    role_options = "".join(
+        f"<option value='{role.value}'>{role.value} - {get_role_label(role.value)}</option>"
+        for role in ServerRole
+    )
+
+    return f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Créer accès serveur</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background: #f5f7fb;
+                color: #1f2937;
+                padding: 30px;
+            }}
+            .container {{
+                max-width: 760px;
+                margin: auto;
+                background: white;
+                padding: 25px;
+                border-radius: 14px;
+                box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+            }}
+            label {{
+                display: block;
+                margin-top: 14px;
+                font-weight: 700;
+            }}
+            input, select {{
+                width: 100%;
+                padding: 10px;
+                margin-top: 5px;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+            }}
+            button {{
+                margin-top: 20px;
+                padding: 12px 18px;
+                border: 0;
+                border-radius: 9px;
+                background: #2563eb;
+                color: white;
+                font-weight: 700;
+                cursor: pointer;
+            }}
+            .warning {{
+                background: #fff7ed;
+                border: 1px solid #fed7aa;
+                color: #9a3412;
+                padding: 12px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+            }}
+            a {{
+                color: #2563eb;
+                text-decoration: none;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Créer société / utilisateur</h1>
+
+            <div class="warning">
+                Page temporaire de développement. À protéger plus tard par login.
+            </div>
+
+            <p><a href="/server/identity">← Retour identité serveur</a></p>
+
+            <form method="post" action="/server/identity/new">
+                <label>Nom société</label>
+                <input name="company_name" placeholder="Client Test 1" required>
+
+                <label>Slug société</label>
+                <input name="company_slug" placeholder="client-test-1" required>
+
+                <label>Email utilisateur</label>
+                <input name="user_email" type="email" placeholder="testeur@societe.fr" required>
+
+                <label>Nom utilisateur</label>
+                <input name="full_name" placeholder="Nom Prénom">
+
+                <label>Rôle</label>
+                <select name="role">
+                    {role_options}
+                </select>
+
+                <button type="submit">Créer l'accès</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.post("/server/identity/new")
+def server_identity_create(
+    company_name: str = Form(...),
+    company_slug: str = Form(...),
+    user_email: str = Form(...),
+    full_name: str = Form(""),
+    role: str = Form(...),
+):
+    import server_user_model as identity
+    from fastapi.responses import RedirectResponse
+
+    identity.init_server_identity_tables()
+
+    company_id = identity.create_company(company_name.strip(), company_slug.strip().lower())
+    user_id = identity.create_user(user_email.strip().lower(), full_name.strip())
+    identity.grant_company_access(company_id, user_id, role)
+
+    return RedirectResponse("/server/identity", status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 def home():
     init_db()
