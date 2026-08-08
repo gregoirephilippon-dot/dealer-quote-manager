@@ -681,10 +681,13 @@ def home():
     with get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT id, created_at, status, customer_name, product_designation, engine_serial_number,
-                   currency, total_cost, selling_total, selling_monthly, selling_per_hour, total_hours
-            FROM quotes
-            ORDER BY id DESC
+            SELECT
+                   q.id, q.created_at, q.status, q.customer_name, q.product_designation, q.engine_serial_number,
+                   q.currency, q.total_cost, q.selling_total, q.selling_monthly, q.selling_per_hour, q.total_hours,
+                   COALESCE(c.name, 'Sans société') AS company_name
+            FROM quotes q
+            LEFT JOIN companies c ON c.id = q.company_id
+            ORDER BY q.id DESC
             """
         ).fetchall()
 
@@ -714,6 +717,7 @@ def home():
         rows_html += f"""
         <tr>
             <td>{quote_id}</td><td>{row['created_at']}</td><td>{row['status']}</td>
+            <td>{row['company_name'] or 'Sans société'}</td>
             <td>{row['customer_name'] or '-'}</td><td>{row['product_designation'] or '-'}</td>
             <td>{row['engine_serial_number'] or '-'}</td><td>{fmt_money(row['total_cost'], currency)}</td>
             <td><strong>{fmt_money(row['selling_total'], currency)}</strong></td>
@@ -731,7 +735,7 @@ def home():
         </tr>"""
 
     if not rows_html:
-        rows_html = '<tr><td colspan="14">Aucun devis pour le moment. Commence par importer un fichier Excel.</td></tr>'
+        rows_html = '<tr><td colspan="15">Aucun devis pour le moment. Commence par importer un fichier Excel.</td></tr>'
 
     content = f"""
     <h2>Historique des devis</h2>
@@ -815,6 +819,7 @@ def home():
             <th>ID</th>
             <th>Date</th>
             <th>Statut</th>
+            <th>Société</th>
             <th>Client</th>
             <th>Moteur</th>
             <th>Serial</th>
