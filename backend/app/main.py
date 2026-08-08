@@ -678,7 +678,17 @@ def server_identity_create(
 @app.get("/", response_class=HTMLResponse)
 def home():
     init_db()
+
+    import server_user_model as identity
+    active_company_id = identity.get_default_company_id()
+
     with get_connection() as conn:
+        active_company = conn.execute(
+            "SELECT name FROM companies WHERE id = ?",
+            (active_company_id,),
+        ).fetchone()
+        active_company_name = active_company["name"] if active_company else f"Société ID {active_company_id}"
+
         rows = conn.execute(
             """
             SELECT
@@ -687,8 +697,10 @@ def home():
                    COALESCE(c.name, 'Sans société') AS company_name
             FROM quotes q
             LEFT JOIN companies c ON c.id = q.company_id
+            WHERE q.company_id = ?
             ORDER BY q.id DESC
-            """
+            """,
+            (active_company_id,),
         ).fetchall()
 
     rows_html = ""
@@ -739,6 +751,9 @@ def home():
 
     content = f"""
     <h2>Historique des devis</h2>
+    <div class="card">
+        <strong>Société active :</strong> {active_company_name}
+    </div>
     <div class="card">
         <a class="button" href="/import">Importer un nouveau fichier Service Calculator</a>
         <button class="button secondary" type="button" onclick="document.getElementById('feedbackModal').style.display='block'">Retour d'expérience</button>
