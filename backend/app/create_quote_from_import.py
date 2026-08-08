@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from database import get_connection, init_db
+import server_user_model as identity
 
 
 def create_quote_from_json(json_path: str):
@@ -37,6 +38,8 @@ def create_quote_from_json(json_path: str):
     cost_per_hour = result.get("cost_per_hour")
 
     init_db()
+    identity.init_server_identity_tables()
+    default_company_id = identity.create_company("Gwen Service", "gwen-service")
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -84,9 +87,10 @@ def create_quote_from_json(json_path: str):
                 total_cost,
                 selling_total,
                 selling_monthly,
-                selling_per_hour
+                selling_per_hour,
+                company_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 import_id,
@@ -106,6 +110,7 @@ def create_quote_from_json(json_path: str):
                 total_cost,
                 None,
                 cost_per_hour,
+                default_company_id,
             ),
         )
 
