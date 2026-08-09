@@ -1437,11 +1437,23 @@ def _pkg_panel_html(quote_id: int):
 
 @app.get("/quote/{quote_id}/package/apply/{package_key}")
 def quote_package_apply_permanent(quote_id: int, package_key: str):
+    init_db()
+    with get_connection() as conn:
+        quote = get_quote_for_active_company(conn, quote_id)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
     _pkg_apply_package_to_quote(quote_id, package_key)
     return _PkgRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
 
 @app.get("/quote/{quote_id}/packages", response_class=_PkgHTMLResponse)
 def quote_packages_permanent_page(quote_id: int):
+    init_db()
+    with get_connection() as conn:
+        quote = get_quote_for_active_company(conn, quote_id)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
     current_key, current_name, packages = _pkg_get_package_status(quote_id)
 
     cards = []
@@ -2092,16 +2104,34 @@ def _options_section_html(quote_id: int):
 
 @app.get("/quote/{quote_id}/options/add")
 def quote_options_add(quote_id: int):
+    init_db()
+    with get_connection() as conn:
+        quote = get_quote_for_active_company(conn, quote_id)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
     _opt_add_line(quote_id)
     return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
 
 @app.get("/quote/{quote_id}/options/delete/{option_id}")
 def quote_options_delete(quote_id: int, option_id: int):
+    init_db()
+    with get_connection() as conn:
+        quote = get_quote_for_active_company(conn, quote_id)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
     _opt_delete_line(quote_id, option_id)
     return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
 
 @app.post("/quote/{quote_id}/options/save")
 async def quote_options_save(quote_id: int, request: _OptionRequest):
+    init_db()
+    with get_connection() as conn:
+        quote = get_quote_for_active_company(conn, quote_id)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
     form = await request.form()
     _opt_update_from_form(quote_id, form)
     return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
