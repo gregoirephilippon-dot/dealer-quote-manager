@@ -38,7 +38,7 @@ def create_quote_from_json(json_path: str):
     cost_per_hour = result.get("cost_per_hour")
 
     init_db()
-    default_company_id = identity.get_default_company_id()
+    default_company_id = identity.get_active_company_id()
 
     with get_connection() as conn:
         cursor = conn.cursor()
