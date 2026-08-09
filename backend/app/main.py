@@ -138,6 +138,35 @@ def require_login(request: Request):
     return None
 
 
+def get_active_company_id_for_request(request: Request) -> int:
+    import server_user_model as identity
+
+    email = get_logged_user_email(request)
+    if email:
+        return identity.get_active_company_id_for_user(email)
+
+    return get_active_company_id_for_request(request)
+
+
+def get_active_company_name_for_request(request: Request) -> str:
+    import server_user_model as identity
+
+    email = get_logged_user_email(request)
+    if email:
+        return identity.get_active_company_name_for_user(email)
+
+    return get_active_company_name_for_request(request)
+
+
+def get_quote_for_active_company_request(conn, quote_id: int, request: Request):
+    active_company_id = get_active_company_id_for_request(request)
+
+    return conn.execute(
+        "SELECT * FROM quotes WHERE id = ? AND company_id = ?",
+        (quote_id, active_company_id),
+    ).fetchone()
+
+
 def run_command(command):
     """
     Compatible Python normal + PyInstaller EXE.
@@ -793,7 +822,7 @@ def company_switch_page():
 
     identity.init_server_identity_tables()
     companies = identity.list_companies()
-    active_company_id = identity.get_active_company_id()
+    active_company_id = get_active_company_id_for_request(request)
 
     options = "".join(
         f"""
@@ -906,8 +935,8 @@ def home(request: Request):
     init_db()
 
     import server_user_model as identity
-    active_company_id = identity.get_active_company_id()
-    active_company_name = identity.get_active_company_name()
+    active_company_id = get_active_company_id_for_request(request)
+    active_company_name = get_active_company_name_for_request(request)
 
     with get_connection() as conn:
 
@@ -1174,7 +1203,7 @@ def import_file(file: UploadFile = File(...)):
 def get_quote_for_active_company(conn, quote_id: int):
     import server_user_model as identity
 
-    active_company_id = identity.get_active_company_id()
+    active_company_id = get_active_company_id_for_request(request)
 
     return conn.execute(
         "SELECT * FROM quotes WHERE id = ? AND company_id = ?",
@@ -1209,7 +1238,7 @@ def quote_inputs_page(quote_id: int, request: Request):
     init_db()
     ensure_quote_services(quote_id)
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
 
     if quote is None:
         return quote_access_denied_response(quote_id)
@@ -1278,7 +1307,7 @@ def save_quote_inputs(
     init_db()
 
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
 
@@ -1309,7 +1338,7 @@ def quote_services_page(quote_id: int, request: Request):
     ensure_quote_services(quote_id)
 
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
 
         if quote is None:
             return quote_access_denied_response(quote_id)
@@ -1367,7 +1396,7 @@ async def save_quote_services(quote_id: int, request: Request):
     ensure_quote_services(quote_id)
 
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
 
@@ -1458,7 +1487,7 @@ def export_quote(quote_id: int, request: Request):
     init_db()
 
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
 
@@ -1573,7 +1602,7 @@ def _pkg_panel_html(quote_id: int):
 def quote_package_apply_permanent(quote_id: int, package_key: str):
     init_db()
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
 
@@ -1584,7 +1613,7 @@ def quote_package_apply_permanent(quote_id: int, package_key: str):
 def quote_packages_permanent_page(quote_id: int):
     init_db()
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
 
@@ -2240,7 +2269,7 @@ def _options_section_html(quote_id: int):
 def quote_options_add(quote_id: int):
     init_db()
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
 
@@ -2251,7 +2280,7 @@ def quote_options_add(quote_id: int):
 def quote_options_delete(quote_id: int, option_id: int):
     init_db()
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
 
@@ -2262,7 +2291,7 @@ def quote_options_delete(quote_id: int, option_id: int):
 async def quote_options_save(quote_id: int, request: _OptionRequest):
     init_db()
     with get_connection() as conn:
-        quote = get_quote_for_active_company(conn, quote_id)
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
 
