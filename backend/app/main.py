@@ -817,113 +817,66 @@ def server_identity_create(
 
 
 @app.get("/server/company-switch", response_class=HTMLResponse)
-def company_switch_page():
+def server_company_switch_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     import server_user_model as identity
 
-    identity.init_server_identity_tables()
-    companies = identity.list_companies()
+    email = get_logged_user_email(request)
+    companies = identity.list_companies_for_user(email)
     active_company_id = get_active_company_id_for_request(request)
+    active_company_name = get_active_company_name_for_request(request)
+
+    if not companies:
+        return layout(
+            "Changer société",
+            """
+            <h2>Changer société active</h2>
+            <div class="error">Aucune société accessible pour cet utilisateur.</div>
+            <p><a class="button secondary" href="/">Retour</a></p>
+            """,
+        )
 
     options = "".join(
-        f"""
-        <option value="{row['id']}" {'selected' if row['id'] == active_company_id else ''}>
-            {row['name']} — ID {row['id']}
-        </option>
-        """
-        for row in companies
+        f"<option value='{company['id']}' {'selected' if int(company['id']) == int(active_company_id) else ''}>{company['name']} — {company['role']}</option>"
+        for company in companies
     )
 
-    return f"""
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Changer société active</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                background: #f5f7fb;
-                color: #1f2937;
-                padding: 30px;
-            }}
-            .container {{
-                max-width: 760px;
-                margin: auto;
-                background: white;
-                padding: 25px;
-                border-radius: 14px;
-                box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-            }}
-            label {{
-                display: block;
-                margin-top: 14px;
-                font-weight: 700;
-            }}
-            select {{
-                width: 100%;
-                padding: 10px;
-                margin-top: 5px;
-                border: 1px solid #d1d5db;
-                border-radius: 8px;
-            }}
-            button {{
-                margin-top: 20px;
-                padding: 12px 18px;
-                border: 0;
-                border-radius: 9px;
-                background: #2563eb;
-                color: white;
-                font-weight: 700;
-                cursor: pointer;
-            }}
-            .warning {{
-                background: #fff7ed;
-                border: 1px solid #fed7aa;
-                color: #9a3412;
-                padding: 12px;
-                border-radius: 10px;
-                margin-bottom: 20px;
-            }}
-            a {{
-                color: #2563eb;
-                text-decoration: none;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>Changer société active</h1>
+    content = f"""
+    <h2>Changer société active</h2>
+    <p>Société active actuelle : <strong>{active_company_name}</strong></p>
 
-            <div class="warning">
-                Page temporaire de développement. Plus tard, la société active viendra du login utilisateur.
-            </div>
-
-            <p>
-                <a href="/">← Historique</a> |
-                <a href="/server/identity">Identité serveur</a>
-            </p>
-
-            <form method="post" action="/server/company-switch">
-                <label>Société active</label>
-                <select name="company_id">
-                    {options}
-                </select>
-
-                <button type="submit">Utiliser cette société</button>
-            </form>
-        </div>
-    </body>
-    </html>
+    <form method="post" action="/server/company-switch" class="card">
+        <label>Société
+            <select name="company_id">
+                {options}
+            </select>
+        </label>
+        <button type="submit">Changer de société</button>
+        <a class="button secondary" href="/">Retour</a>
+    </form>
     """
+
+    return layout("Changer société", content)
 
 
 @app.post("/server/company-switch")
-def company_switch_save(company_id: int = Form(...)):
+def server_company_switch_submit(
+    request: Request,
+    company_id: int = Form(...),
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     import server_user_model as identity
-    from fastapi.responses import RedirectResponse
 
-    identity.set_active_company_id(company_id)
+    email = get_logged_user_email(request)
+    identity.set_active_company_id_for_user(email, company_id)
 
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/", response_class=HTMLResponse)
