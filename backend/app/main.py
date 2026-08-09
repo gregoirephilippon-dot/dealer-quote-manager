@@ -474,7 +474,11 @@ def health_check():
 
 
 @app.get("/server/identity", response_class=HTMLResponse)
-def server_identity_page():
+def server_identity_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     import server_user_model as identity
     from server_identity import get_role_label
 
@@ -656,7 +660,11 @@ def server_identity_page():
 
 
 @app.get("/server/identity/new", response_class=HTMLResponse)
-def server_identity_new_page():
+def server_identity_new_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     from server_identity import ServerRole, get_role_label
 
     role_options = "".join(
@@ -758,6 +766,7 @@ def server_identity_new_page():
 
 @app.post("/server/identity/new")
 def server_identity_create(
+    request: Request,
     company_name: str = Form(...),
     company_slug: str = Form(...),
     user_email: str = Form(...),
