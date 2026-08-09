@@ -121,6 +121,23 @@ def login_submit(
         status_code=401,
     )
 
+def get_logged_user_email(request: Request) -> str | None:
+    import session_security
+
+    token = request.cookies.get(session_security.SESSION_COOKIE_NAME)
+    if not token:
+        return None
+
+    return session_security.verify_session_token(token)
+
+
+def require_login(request: Request):
+    email = get_logged_user_email(request)
+    if not email:
+        return RedirectResponse(url="/login", status_code=303)
+    return None
+
+
 def run_command(command):
     """
     Compatible Python normal + PyInstaller EXE.
@@ -872,7 +889,11 @@ def company_switch_save(company_id: int = Form(...)):
 
 
 @app.get("/", response_class=HTMLResponse)
-def home():
+def home(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     init_db()
 
     import server_user_model as identity
