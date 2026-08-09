@@ -56,6 +56,39 @@ def login_page():
     return layout("Connexion", content)
 
 
+
+
+@app.get("/logout")
+def logout():
+    import session_security
+
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie(session_security.SESSION_COOKIE_NAME)
+    return response
+
+
+@app.get("/me", response_class=HTMLResponse)
+def current_user_page(request: Request):
+    import session_security
+
+    token = request.cookies.get(session_security.SESSION_COOKIE_NAME)
+    email = session_security.verify_session_token(token) if token else None
+
+    if not email:
+        return RedirectResponse(url="/login", status_code=303)
+
+    return layout(
+        "Utilisateur connecté",
+        f"""
+        <h2>Session active</h2>
+        <p>Connecté avec : <strong>{email}</strong></p>
+        <p>
+            <a class="button" href="/">Accueil</a>
+            <a class="button secondary" href="/logout">Déconnexion</a>
+        </p>
+        """,
+    )
+
 @app.post("/login")
 def login_submit(
     email: str = Form(""),
@@ -64,16 +97,17 @@ def login_submit(
     import server_user_model as identity
 
     if identity.verify_user_password(email, password):
-        return HTMLResponse(
-            layout(
-                "Connexion OK",
-                f"""
-                <h2>Connexion réussie</h2>
-                <p>Utilisateur connecté : <strong>{email.strip().lower()}</strong></p>
-                <p><a class="button" href="/">Entrer dans l'application</a></p>
-                """,
-            )
+        import session_security
+
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(
+            key=session_security.SESSION_COOKIE_NAME,
+            value=session_security.create_session_token(email),
+            httponly=True,
+            samesite="lax",
+            max_age=session_security.SESSION_DURATION_SECONDS,
         )
+        return response
 
     return HTMLResponse(
         layout(
