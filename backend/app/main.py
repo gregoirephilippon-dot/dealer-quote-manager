@@ -38,6 +38,55 @@ JSON_DIR = DATA_DIR / "examples"
 
 app = FastAPI(title="Dealer Quote Manager")
 
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page():
+    content = """
+    <h2>Connexion</h2>
+    <form method="post" action="/login" class="card">
+        <label>Email
+            <input type="email" name="email" required>
+        </label>
+        <label>Mot de passe
+            <input type="password" name="password" required>
+        </label>
+        <button type="submit">Se connecter</button>
+    </form>
+    """
+    return layout("Connexion", content)
+
+
+@app.post("/login")
+def login_submit(
+    email: str = Form(""),
+    password: str = Form(""),
+):
+    import server_user_model as identity
+
+    if identity.verify_user_password(email, password):
+        return HTMLResponse(
+            layout(
+                "Connexion OK",
+                f"""
+                <h2>Connexion réussie</h2>
+                <p>Utilisateur connecté : <strong>{email.strip().lower()}</strong></p>
+                <p><a class="button" href="/">Entrer dans l'application</a></p>
+                """,
+            )
+        )
+
+    return HTMLResponse(
+        layout(
+            "Connexion refusée",
+            """
+            <h2>Connexion refusée</h2>
+            <div class="error">Email ou mot de passe incorrect.</div>
+            <p><a class="button secondary" href="/login">Réessayer</a></p>
+            """,
+        ),
+        status_code=401,
+    )
+
 def run_command(command):
     """
     Compatible Python normal + PyInstaller EXE.
