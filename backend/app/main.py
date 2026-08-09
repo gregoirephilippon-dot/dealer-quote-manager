@@ -1177,11 +1177,12 @@ def quote_services_page(quote_id: int):
     ensure_quote_services(quote_id)
 
     with get_connection() as conn:
-        quote = conn.execute("SELECT * FROM quotes WHERE id = ?", (quote_id,)).fetchone()
-        services = conn.execute("SELECT * FROM quote_services WHERE quote_id = ? ORDER BY service_id", (quote_id,)).fetchall()
+        quote = get_quote_for_active_company(conn, quote_id)
 
-    if quote is None:
-        return HTMLResponse(layout("Introuvable", f"<div class='error'>Devis introuvable : {quote_id}</div>"), status_code=404)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
+        services = conn.execute("SELECT * FROM quote_services WHERE quote_id = ? ORDER BY service_id", (quote_id,)).fetchall()
 
     currency = quote["currency"] or "EUR"
 
