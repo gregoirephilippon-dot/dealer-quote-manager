@@ -1321,6 +1321,13 @@ def save_settings(
 
 @app.get("/quote/{quote_id}/export")
 def export_quote(quote_id: int):
+    init_db()
+
+    with get_connection() as conn:
+        quote = get_quote_for_active_company(conn, quote_id)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
     regenerate_quote(quote_id)
     return RedirectResponse(url="/", status_code=303)
 
