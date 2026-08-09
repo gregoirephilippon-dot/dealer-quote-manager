@@ -166,6 +166,53 @@ def create_user(email: str, full_name: str = "") -> int:
         return int(row["id"])
 
 
+
+def set_user_password(email: str, password: str) -> bool:
+    from password_security import hash_password
+
+    email = email.lower().strip()
+    password_hash = hash_password(password)
+    now = datetime.now().isoformat(timespec="seconds")
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+
+        if row is None:
+            return False
+
+        conn.execute(
+            """
+            UPDATE users
+            SET password_hash = ?, updated_at = ?
+            WHERE email = ?
+            """,
+            (password_hash, now, email),
+        )
+
+        conn.commit()
+        return True
+
+
+def verify_user_password(email: str, password: str) -> bool:
+    from password_security import verify_password
+
+    email = email.lower().strip()
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT password_hash FROM users WHERE email = ? AND status = 'active'",
+            (email,),
+        ).fetchone()
+
+        if row is None or not row["password_hash"]:
+            return False
+
+        return verify_password(password, row["password_hash"])
+
+
 def grant_company_access(company_id: int, user_id: int, role: str) -> int:
     ServerRole(role)
     now = datetime.now().isoformat(timespec="seconds")
