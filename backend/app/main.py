@@ -1201,7 +1201,11 @@ def quote_access_denied_response(quote_id: int):
 
 
 @app.get("/quote/{quote_id}/inputs", response_class=HTMLResponse)
-def quote_inputs_page(quote_id: int):
+def quote_inputs_page(quote_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     init_db()
     ensure_quote_services(quote_id)
     with get_connection() as conn:
@@ -1252,6 +1256,7 @@ def quote_inputs_page(quote_id: int):
 @app.post("/quote/{quote_id}/inputs")
 def save_quote_inputs(
     quote_id: int,
+    request: Request,
     customer_name: str = Form(""),
     product_designation: str = Form(""),
     engine_serial_number: str = Form(""),
@@ -1266,6 +1271,10 @@ def save_quote_inputs(
     total_misc: float = Form(0),
     currency: str = Form("EUR"),
 ):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     init_db()
 
     with get_connection() as conn:
@@ -1291,7 +1300,11 @@ def save_quote_inputs(
     return RedirectResponse(url=f"/quote/{quote_id}/inputs", status_code=303)
 
 @app.get("/quote/{quote_id}/services", response_class=HTMLResponse)
-def quote_services_page(quote_id: int):
+def quote_services_page(quote_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     init_db()
     ensure_quote_services(quote_id)
 
@@ -1346,6 +1359,10 @@ def quote_services_page(quote_id: int):
 
 @app.post("/quote/{quote_id}/services")
 async def save_quote_services(quote_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     init_db()
     ensure_quote_services(quote_id)
 
@@ -1433,7 +1450,11 @@ def save_settings(
     return RedirectResponse(url="/settings", status_code=303)
 
 @app.get("/quote/{quote_id}/export")
-def export_quote(quote_id: int):
+def export_quote(quote_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     init_db()
 
     with get_connection() as conn:
