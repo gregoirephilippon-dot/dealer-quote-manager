@@ -286,3 +286,101 @@ if __name__ == "__main__":
     print("Access:")
     for row in list_company_access():
         print(dict(row))
+
+
+def get_user_by_email(email: str):
+    email = email.lower().strip()
+
+    with get_connection() as conn:
+        return conn.execute(
+            """
+            SELECT *
+            FROM users
+            WHERE email = ?
+            """,
+            (email,),
+        ).fetchone()
+
+
+def list_companies_for_user(email: str):
+    email = email.lower().strip()
+
+    with get_connection() as conn:
+        return conn.execute(
+            """
+            SELECT
+                c.id,
+                c.name,
+                c.slug,
+                ca.role,
+                ca.status
+            FROM users u
+            JOIN company_access ca ON ca.user_id = u.id
+            JOIN companies c ON c.id = ca.company_id
+            WHERE u.email = ?
+              AND u.status = 'active'
+              AND ca.status = 'active'
+            ORDER BY c.name
+            """,
+            (email,),
+        ).fetchall()
+
+
+def user_has_company_access(email: str, company_id: int) -> bool:
+    companies = list_companies_for_user(email)
+    return any(int(company["id"]) == int(company_id) for company in companies)
+
+
+def get_user_active_company_file(email: str) -> Path:
+    import hashlib
+
+    email = email.lower().strip()
+    user_key = hashlib.sha256(email.encode("utf-8")).hexdigest()[:16]
+    return config.BASE_DIR / "data" / f"server_active_company_{user_key}.txt"
+
+
+def set_active_company_id_for_user(email: str, company_id: int) -> int:
+    email = email.lower().strip()
+    company_id = int(company_id)
+
+    if not user_has_company_access(email, company_id):
+        raise ValueError(f"Utilisateur sans accès à la société {company_id}")
+
+    active_file = get_user_active_company_file(email)
+    active_file.parent.mkdir(parents=True, exist_ok=True)
+    active_file.write_text(str(company_id), encoding="utf-8")
+
+    return company_id
+
+
+def get_active_company_id_for_user(email: str) -> int:
+    email = email.lower().strip()
+    companies = list_companies_for_user(email)
+
+    if not companies:
+        return get_default_company_id()
+
+    active_file = get_user_active_company_file(email)
+
+    if active_file.exists():
+        try:
+            company_id = int(active_file.read_text(encoding="utf-8").strip())
+            if user_has_company_access(email, company_id):
+                return company_id
+        except Exception:
+            pass
+
+    first_company_id = int(companies[0]["id"])
+    set_active_company_id_for_user(email, first_company_id)
+    return first_company_id
+
+
+def get_active_company_name_for_user(email: str) -> str:
+    company_id = get_active_company_id_for_user(email)
+    company = get_company_by_id(company_id)
+
+    if company is None:
+        return f"Société ID {company_id}"
+
+    return company["name"]
+
