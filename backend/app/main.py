@@ -1154,6 +1154,12 @@ def save_quote_inputs(
     currency: str = Form("EUR"),
 ):
     init_db()
+
+    with get_connection() as conn:
+        quote = get_quote_for_active_company(conn, quote_id)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
     total_cost = (total_parts or 0) + (total_labour or 0) + (total_misc or 0)
     with get_connection() as conn:
         conn.execute(
@@ -1229,6 +1235,12 @@ def quote_services_page(quote_id: int):
 async def save_quote_services(quote_id: int, request: Request):
     init_db()
     ensure_quote_services(quote_id)
+
+    with get_connection() as conn:
+        quote = get_quote_for_active_company(conn, quote_id)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
     form = await request.form()
 
     with get_connection() as conn:
