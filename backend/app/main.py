@@ -2187,5 +2187,4 @@ if __name__ == "__main__":
     init_db()
     ensure_default_settings()
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    app.mount("/exports-static", StaticFiles(directory=str(EXPORT_DIR)), name="exports-static")
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
