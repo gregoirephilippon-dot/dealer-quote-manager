@@ -1056,15 +1056,46 @@ def import_file(file: UploadFile = File(...)):
     except Exception as exc:
         return layout("Erreur import", f"<h2>Erreur import</h2><div class='error'>{str(exc)}</div><a class='button' href='/import'>Retour import</a>")
 
+
+
+def get_quote_for_active_company(conn, quote_id: int):
+    import server_user_model as identity
+
+    active_company_id = identity.get_active_company_id()
+
+    return conn.execute(
+        "SELECT * FROM quotes WHERE id = ? AND company_id = ?",
+        (quote_id, active_company_id),
+    ).fetchone()
+
+
+def quote_access_denied_response(quote_id: int):
+    return HTMLResponse(
+        layout(
+            "Accès refusé",
+            f"""
+            <div class="error">
+                Devis introuvable ou non autorisé pour la société active : {quote_id}
+            </div>
+            <p>
+                <a class="button secondary" href="/">Retour historique</a>
+                <a class="button" href="/server/company-switch">Changer société</a>
+            </p>
+            """,
+        ),
+        status_code=404,
+    )
+
+
 @app.get("/quote/{quote_id}/inputs", response_class=HTMLResponse)
 def quote_inputs_page(quote_id: int):
     init_db()
     ensure_quote_services(quote_id)
     with get_connection() as conn:
-        quote = conn.execute("SELECT * FROM quotes WHERE id = ?", (quote_id,)).fetchone()
+        quote = get_quote_for_active_company(conn, quote_id)
 
     if quote is None:
-        return HTMLResponse(layout("Introuvable", f"<div class='error'>Devis introuvable : {quote_id}</div>"), status_code=404)
+        return quote_access_denied_response(quote_id)
 
     contract_years = ""
     if quote["total_hours"] and quote["hours_per_year"]:
