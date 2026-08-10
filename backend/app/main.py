@@ -1120,15 +1120,15 @@ def import_file(file: UploadFile = File(...)):
         json_path = JSON_DIR / "service_calculation_summary.json"
 
         run_command([sys.executable, "backend/app/importers/service_calculation_importer.py", str(upload_path), "--out", str(json_path), "--pretty"])
-        create_output = run_command([sys.executable, "backend/app/create_quote_from_import.py", str(json_path)])
+        from create_quote_from_import import create_quote_from_json
 
-        quote_id = None
-        for line in create_output.splitlines():
-            if line.strip().startswith("Devis brouillon cree : ID"):
-                quote_id = int(line.split("ID", 1)[1].strip())
+        quote_id = create_quote_from_json(
+            str(json_path),
+            company_id=get_active_company_id_for_request(request),
+        )
 
         if quote_id is None:
-            raise RuntimeError("Impossible de retrouver l'ID du devis cree.")
+            raise RuntimeError("Impossible de créer le devis importé.")
 
         ensure_quote_services(quote_id)
 
@@ -1156,7 +1156,7 @@ def import_file(file: UploadFile = File(...)):
 def get_quote_for_active_company(conn, quote_id: int):
     import server_user_model as identity
 
-    active_company_id = get_active_company_id_for_request(request)
+    active_company_id = identity.get_active_company_id()
 
     return conn.execute(
         "SELECT * FROM quotes WHERE id = ? AND company_id = ?",
@@ -1448,7 +1448,7 @@ def export_quote(quote_id: int, request: Request):
     return RedirectResponse(url="/", status_code=303)
 
 @app.get("/exports/{filename}")
-def get_export(filename: str):
+def get_export(filename: str, request: Request):
     path = EXPORT_DIR / filename
     if not path.exists():
         return HTMLResponse(layout("Introuvable", f"<div class='error'>Fichier introuvable : {filename}</div>"), status_code=404)
@@ -1552,7 +1552,7 @@ def _pkg_panel_html(quote_id: int):
     """
 
 @app.get("/quote/{quote_id}/package/apply/{package_key}")
-def quote_package_apply_permanent(quote_id: int, package_key: str):
+def quote_package_apply_permanent(quote_id: int, package_key: str, request: Request):
     init_db()
     with get_connection() as conn:
         quote = get_quote_for_active_company_request(conn, quote_id, request)
@@ -1563,7 +1563,7 @@ def quote_package_apply_permanent(quote_id: int, package_key: str):
     return _PkgRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
 
 @app.get("/quote/{quote_id}/packages", response_class=_PkgHTMLResponse)
-def quote_packages_permanent_page(quote_id: int):
+def quote_packages_permanent_page(quote_id: int, request: Request):
     init_db()
     with get_connection() as conn:
         quote = get_quote_for_active_company_request(conn, quote_id, request)
@@ -2219,7 +2219,7 @@ def _options_section_html(quote_id: int):
     """
 
 @app.get("/quote/{quote_id}/options/add")
-def quote_options_add(quote_id: int):
+def quote_options_add(quote_id: int, request: Request):
     init_db()
     with get_connection() as conn:
         quote = get_quote_for_active_company_request(conn, quote_id, request)
@@ -2230,7 +2230,7 @@ def quote_options_add(quote_id: int):
     return _OptionRedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
 
 @app.get("/quote/{quote_id}/options/delete/{option_id}")
-def quote_options_delete(quote_id: int, option_id: int):
+def quote_options_delete(quote_id: int, option_id: int, request: Request):
     init_db()
     with get_connection() as conn:
         quote = get_quote_for_active_company_request(conn, quote_id, request)

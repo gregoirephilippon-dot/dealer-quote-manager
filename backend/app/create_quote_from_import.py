@@ -6,7 +6,7 @@ from database import get_connection, init_db
 import server_user_model as identity
 
 
-def create_quote_from_json(json_path: str):
+def create_quote_from_json(json_path: str, company_id: int | None = None):
     path = Path(json_path)
 
     if not path.exists():
@@ -38,7 +38,7 @@ def create_quote_from_json(json_path: str):
     cost_per_hour = result.get("cost_per_hour")
 
     init_db()
-    default_company_id = identity.get_active_company_id()
+    default_company_id = company_id if company_id is not None else identity.get_active_company_id()
 
     with get_connection() as conn:
         cursor = conn.cursor()
