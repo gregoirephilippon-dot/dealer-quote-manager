@@ -2362,6 +2362,40 @@ if __name__ == "__main__":
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
 
+
+
+def require_roles(request: Request, allowed_roles):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    email = get_logged_user_email(request)
+    if not email:
+        return RedirectResponse(url="/login", status_code=303)
+
+    import server_user_model as identity
+
+    if not identity.user_has_any_role(email, allowed_roles):
+        return HTMLResponse(
+            layout(
+                "Accès refusé",
+                f"""
+                <div class="error">
+                    Accès refusé. Rôle requis : {', '.join(allowed_roles)}
+                </div>
+                <p><a class="button secondary" href="/">Retour accueil</a></p>
+                """
+            ),
+            status_code=403,
+        )
+
+    return None
+
+
+def require_owner_or_super_admin(request: Request):
+    return require_roles(request, ["OWNER", "SUPER_ADMIN"])
+
+
 def require_super_admin(request: Request):
     login_response = require_login(request)
     if login_response:
@@ -2392,7 +2426,7 @@ def require_super_admin(request: Request):
 
 @app.get("/server/users", response_class=HTMLResponse)
 def server_users_settings_page(request: Request):
-    admin_response = require_super_admin(request)
+    admin_response = require_owner_or_super_admin(request)
     if admin_response:
         return admin_response
 
