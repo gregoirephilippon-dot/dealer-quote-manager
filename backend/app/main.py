@@ -2424,6 +2424,52 @@ def require_super_admin(request: Request):
     return None
 
 
+
+
+@app.post("/server/users/{user_id}/status/{status}")
+def server_user_status_change(user_id: int, status: str, request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import server_user_model as identity
+
+    current_email = get_logged_user_email(request)
+    current_user = identity.get_user_by_email(current_email) if current_email else None
+
+    if current_user and current_user["id"] == user_id and status != "active":
+        return HTMLResponse(
+            layout(
+                "Action refusée",
+                """
+                <div class="error">
+                    Tu ne peux pas désactiver ton propre compte administrateur.
+                </div>
+                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    try:
+        identity.set_user_status(user_id, status)
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Erreur utilisateur",
+                f"""
+                <div class="error">
+                    Impossible de modifier le statut utilisateur : {exc}
+                </div>
+                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/users", status_code=303)
+
+
 @app.get("/server/users", response_class=HTMLResponse)
 def server_users_settings_page(request: Request):
     admin_response = require_owner_or_super_admin(request)
@@ -2455,6 +2501,9 @@ def server_users_settings_page(request: Request):
     user_rows = ""
     for user in grouped.values():
         access_html = "<br>".join(user["access"]) if user["access"] else "<em>Aucun accès société</em>"
+        next_status = "inactive" if user["user_status"] == "active" else "active"
+        button_label = "Désactiver" if user["user_status"] == "active" else "Activer"
+
         user_rows += f"""
         <tr>
             <td>{user['user_id']}</td>
@@ -2463,6 +2512,11 @@ def server_users_settings_page(request: Request):
             <td>{user['user_status']}</td>
             <td>{access_html}</td>
             <td>{user['created_at']}</td>
+            <td>
+                <form method="post" action="/server/users/{user['user_id']}/status/{next_status}" style="margin:0;">
+                    <button type="submit">{button_label}</button>
+                </form>
+            </td>
         </tr>
         """
 
@@ -2488,6 +2542,7 @@ def server_users_settings_page(request: Request):
                 <th>Statut utilisateur</th>
                 <th>Accès sociétés / rôles</th>
                 <th>Créé le</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody>

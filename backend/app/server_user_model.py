@@ -435,3 +435,32 @@ def list_user_settings_rows():
             """
         ).fetchall()
 
+def set_user_status(user_id: int, status: str):
+    init_server_identity_tables()
+
+    allowed = {"active", "inactive"}
+    if status not in allowed:
+        raise ValueError("Statut utilisateur invalide")
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+
+        if row is None:
+            raise ValueError("Utilisateur introuvable")
+
+        from datetime import datetime
+        now = datetime.now().isoformat(timespec="seconds")
+
+        conn.execute(
+            """
+            UPDATE users
+            SET status = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status, now, user_id),
+        )
+        conn.commit()
+
