@@ -138,6 +138,33 @@ def require_login(request: Request):
     return None
 
 
+@app.middleware("http")
+async def global_login_guard(request: Request, call_next):
+    public_paths = {
+        "/login",
+        "/logout",
+        "/health",
+        "/favicon.ico",
+    }
+
+    path = request.url.path
+
+    if path in public_paths:
+        return await call_next(request)
+
+    token = request.cookies.get("dealer_quote_session")
+    email = None
+
+    if token:
+        import session_security
+        email = session_security.verify_session_token(token)
+
+    if not email:
+        return RedirectResponse(url="/login", status_code=303)
+
+    return await call_next(request)
+
+
 def get_active_company_id_for_request(request: Request) -> int:
     import server_user_model as identity
 
@@ -1091,7 +1118,11 @@ def instructions_page():
     return layout("Instructions", content)
 
 @app.get("/import", response_class=HTMLResponse)
-def import_page():
+def import_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     content = """
     <h2>Importer un fichier ServiceCalculationExport.xlsx</h2>
     <div class="card">
@@ -1395,7 +1426,11 @@ def regenerate_quote(quote_id):
     run_command([sys.executable, "backend/app/export_quote_pdf.py", str(quote_id)])
 
 @app.get("/settings", response_class=HTMLResponse)
-def settings_page():
+def settings_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     ensure_default_settings()
     settings = get_settings_dict()
     fields = [
@@ -1415,6 +1450,7 @@ def settings_page():
 
 @app.post("/settings")
 def save_settings(
+    request: Request,
     parts_margin_percent: float = Form(...),
     labour_margin_percent: float = Form(...),
     admin_fee_percent: float = Form(...),
@@ -1683,7 +1719,11 @@ from dealer_discount_settings import (
 )
 
 @app.get("/dealer-discounts", response_class=_DealerDiscountHTMLResponse)
-def dealer_discounts_page():
+def dealer_discounts_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     _dd_ensure_schema()
     rows = _dd_get_codes()
 
@@ -1857,12 +1897,20 @@ def dealer_discounts_page():
 
 @app.post("/dealer-discounts")
 async def dealer_discounts_save(request: _DealerDiscountRequest):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     form = await request.form()
     _dd_update_codes(form)
     return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
 
 @app.get("/dealer-discounts/reset")
-def dealer_discounts_reset():
+def dealer_discounts_reset(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     _dd_reset_codes()
     return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
 # --- End dealer discount settings routes ---
@@ -1888,7 +1936,11 @@ from price_catalog_model import (
 )
 
 @app.get("/price-catalog", response_class=_OptionHTMLResponse)
-def price_catalog_page(q: str = ""):
+def price_catalog_page(request: Request, q: str = ""):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     status = _price_catalog_count()
     results = _price_catalog_search(q, 40) if q else []
 
@@ -1968,7 +2020,11 @@ def price_catalog_page(q: str = ""):
     """
 
 @app.post("/price-catalog/upload")
-async def price_catalog_upload(file: _OptionUploadFile = _OptionFile(...)):
+async def price_catalog_upload(request: Request, file: _OptionUploadFile = _OptionFile(...)):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
     upload_dir = BASE_DIR / "data" / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
 
