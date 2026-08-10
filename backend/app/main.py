@@ -305,6 +305,8 @@ def layout(title, content):
         <a href="/dealer-discounts">Remise dealer</a>
         <a href="/price-catalog">Import price list</a>
         <a href="/server/company-switch">Changer société</a>
+        <a href="/login">Connexion</a>
+        <a href="/logout">Déconnexion</a>
         <a href="/server/users">Utilisateurs</a>
     </nav>
 </header>
