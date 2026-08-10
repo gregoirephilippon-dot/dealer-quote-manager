@@ -45,10 +45,10 @@ def login_page():
     <h2>Connexion</h2>
     <form method="post" action="/login" class="card">
         <label>Email
-            <input type="email" name="email" required>
+            <input type="email" name="email" autocomplete="username" required>
         </label>
         <label>Mot de passe
-            <input type="password" name="password" required>
+            <input type="password" name="password" autocomplete="current-password" required>
         </label>
         <button type="submit">Se connecter</button>
     </form>
@@ -2609,6 +2609,77 @@ async def server_users_create_company_access(request: Request):
     return RedirectResponse(url="/server/users", status_code=303)
 
 
+
+
+@app.post("/server/users/create")
+async def server_users_create_user(request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import server_user_model as identity
+
+    form = await request.form()
+
+    email = str(form.get("email") or "").strip().lower()
+    full_name = str(form.get("full_name") or "").strip()
+    temporary_password = str(form.get("temporary_password") or "").strip()
+    status = str(form.get("status") or "inactive").strip()
+
+    try:
+        identity.create_user_with_temporary_password(
+            email=email,
+            full_name=full_name,
+            temporary_password=temporary_password,
+            status=status,
+        )
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Erreur création utilisateur",
+                f"""
+                <div class="error">
+                    Impossible de créer l’utilisateur : {exc}
+                </div>
+                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/users", status_code=303)
+
+
+@app.post("/server/users/{user_id}/password")
+async def server_user_password_change(user_id: int, request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import server_user_model as identity
+
+    form = await request.form()
+    temporary_password = str(form.get("temporary_password") or "").strip()
+
+    try:
+        identity.set_user_password_by_id(user_id, temporary_password)
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Erreur mot de passe",
+                f"""
+                <div class="error">
+                    Impossible de modifier le mot de passe : {exc}
+                </div>
+                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/users", status_code=303)
+
+
 @app.get("/server/users", response_class=HTMLResponse)
 def server_users_settings_page(request: Request):
     admin_response = require_owner_or_super_admin(request)
@@ -2684,8 +2755,13 @@ def server_users_settings_page(request: Request):
             <td>{access_html}</td>
             <td>{user['created_at']}</td>
             <td>
-                <form method="post" action="/server/users/{user['user_id']}/status/{next_status}" style="margin:0;">
+                <form method="post" action="/server/users/{user['user_id']}/status/{next_status}" style="margin:0 0 8px 0;">
                     <button type="submit">{button_label}</button>
+                </form>
+
+                <form method="post" action="/server/users/{user['user_id']}/password" style="margin:0;">
+                    <input type="password" name="temporary_password" autocomplete="new-password" placeholder="Nouveau mdp temporaire" required>
+                    <button type="submit">Changer mdp</button>
                 </form>
             </td>
         </tr>
@@ -2698,6 +2774,37 @@ def server_users_settings_page(request: Request):
         <p>
             Cette page est réservée aux rôles <strong>OWNER</strong> et <strong>SUPER_ADMIN</strong>.
         </p>
+    </div>
+
+    <div class="card">
+        <h3>Créer un utilisateur</h3>
+        <p>
+            Par défaut, crée l’utilisateur en <strong>inactive</strong>.
+            Il ne pourra pas se connecter tant qu’il n’est pas activé.
+        </p>
+
+        <form method="post" action="/server/users/create">
+            <label>Email
+                <input type="email" name="email" autocomplete="username" required>
+            </label>
+
+            <label>Nom
+                <input type="text" name="full_name">
+            </label>
+
+            <label>Mot de passe temporaire
+                <input type="password" name="temporary_password" autocomplete="new-password" required>
+            </label>
+
+            <label>Statut
+                <select name="status">
+                    <option value="inactive">inactive — à valider</option>
+                    <option value="active">active — validé directement</option>
+                </select>
+            </label>
+
+            <button type="submit">Créer utilisateur</button>
+        </form>
     </div>
 
     <div class="card">

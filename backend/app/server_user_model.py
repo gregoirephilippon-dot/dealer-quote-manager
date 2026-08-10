@@ -537,3 +537,82 @@ def set_company_access_role(user_id: int, company_id: int, role: str):
         )
         conn.commit()
 
+def create_user_with_temporary_password(email: str, full_name: str, temporary_password: str, status: str = "inactive"):
+    init_server_identity_tables()
+
+    email = (email or "").strip().lower()
+    full_name = (full_name or "").strip()
+    temporary_password = temporary_password or ""
+
+    if not email:
+        raise ValueError("Email obligatoire")
+
+    if not temporary_password:
+        raise ValueError("Mot de passe temporaire obligatoire")
+
+    if status not in {"active", "inactive"}:
+        raise ValueError("Statut utilisateur invalide")
+
+    from datetime import datetime
+    from password_security import hash_password
+
+    now = datetime.now().isoformat(timespec="seconds")
+    password_hash = hash_password(temporary_password)
+
+    with get_connection() as conn:
+        existing = conn.execute(
+            "SELECT id FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+
+        if existing:
+            raise ValueError("Un utilisateur existe déjà avec cet email")
+
+        conn.execute(
+            """
+            INSERT INTO users (
+                email,
+                full_name,
+                password_hash,
+                status,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (email, full_name, password_hash, status, now, now),
+        )
+        conn.commit()
+
+
+def set_user_password_by_id(user_id: int, new_password: str):
+    init_server_identity_tables()
+
+    if not new_password:
+        raise ValueError("Nouveau mot de passe obligatoire")
+
+    from datetime import datetime
+    from password_security import hash_password
+
+    now = datetime.now().isoformat(timespec="seconds")
+    password_hash = hash_password(new_password)
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+
+        if row is None:
+            raise ValueError("Utilisateur introuvable")
+
+        conn.execute(
+            """
+            UPDATE users
+            SET password_hash = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (password_hash, now, user_id),
+        )
+        conn.commit()
+
