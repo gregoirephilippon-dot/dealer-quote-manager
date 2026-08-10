@@ -1104,7 +1104,7 @@ def import_page():
     return layout("Importer", content)
 
 @app.post("/import", response_class=HTMLResponse)
-def import_file(file: UploadFile = File(...)):
+def import_file(request: Request, file: UploadFile = File(...)):
     try:
         init_db()
         ensure_default_settings()
