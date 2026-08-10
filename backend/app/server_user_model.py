@@ -497,3 +497,43 @@ def set_company_access_status(user_id: int, company_id: int, status: str):
         )
         conn.commit()
 
+def set_company_access_role(user_id: int, company_id: int, role: str):
+    init_server_identity_tables()
+
+    allowed = {
+        "OWNER",
+        "SUPER_ADMIN",
+        "COMPANY_ADMIN",
+        "CONTRACT_MANAGER",
+        "TESTER",
+    }
+
+    if role not in allowed:
+        raise ValueError("Rôle accès société invalide")
+
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM company_access
+            WHERE user_id = ? AND company_id = ?
+            """,
+            (user_id, company_id),
+        ).fetchone()
+
+        if row is None:
+            raise ValueError("Accès société introuvable")
+
+        from datetime import datetime
+        now = datetime.now().isoformat(timespec="seconds")
+
+        conn.execute(
+            """
+            UPDATE company_access
+            SET role = ?, updated_at = ?
+            WHERE user_id = ? AND company_id = ?
+            """,
+            (role, now, user_id, company_id),
+        )
+        conn.commit()
+

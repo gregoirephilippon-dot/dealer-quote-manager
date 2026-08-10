@@ -2516,6 +2516,55 @@ def server_company_access_status_change(user_id: int, company_id: int, status: s
     return RedirectResponse(url="/server/users", status_code=303)
 
 
+
+
+@app.post("/server/users/{user_id}/company/{company_id}/role")
+async def server_company_access_role_change(user_id: int, company_id: int, request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import server_user_model as identity
+
+    form = await request.form()
+    role = str(form.get("role") or "").strip()
+
+    current_email = get_logged_user_email(request)
+    current_user = identity.get_user_by_email(current_email) if current_email else None
+
+    if current_user and current_user["id"] == user_id and role not in ["OWNER", "SUPER_ADMIN"]:
+        return HTMLResponse(
+            layout(
+                "Action refusée",
+                """
+                <div class="error">
+                    Tu ne peux pas retirer ton propre rôle administrateur depuis cette page.
+                </div>
+                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    try:
+        identity.set_company_access_role(user_id, company_id, role)
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Erreur rôle société",
+                f"""
+                <div class="error">
+                    Impossible de modifier le rôle société : {exc}
+                </div>
+                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/users", status_code=303)
+
+
 @app.get("/server/users", response_class=HTMLResponse)
 def server_users_settings_page(request: Request):
     admin_response = require_owner_or_super_admin(request)
@@ -2545,10 +2594,22 @@ def server_users_settings_page(request: Request):
 
             grouped[email]["access"].append(
                 f"""
-                <div style="margin-bottom:8px;">
+                <div style="margin-bottom:12px;">
                     <strong>{row['company_name']}</strong> — {row['role']} — {row['access_status']}
+
                     <form method="post" action="/server/users/{row['user_id']}/company/{row['company_id']}/status/{next_access_status}" style="display:inline; margin-left:8px;">
                         <button type="submit">{access_button_label}</button>
+                    </form>
+
+                    <form method="post" action="/server/users/{row['user_id']}/company/{row['company_id']}/role" style="display:inline; margin-left:8px;">
+                        <select name="role">
+                            <option value="OWNER" {"selected" if row['role'] == "OWNER" else ""}>OWNER</option>
+                            <option value="SUPER_ADMIN" {"selected" if row['role'] == "SUPER_ADMIN" else ""}>SUPER_ADMIN</option>
+                            <option value="COMPANY_ADMIN" {"selected" if row['role'] == "COMPANY_ADMIN" else ""}>COMPANY_ADMIN</option>
+                            <option value="CONTRACT_MANAGER" {"selected" if row['role'] == "CONTRACT_MANAGER" else ""}>CONTRACT_MANAGER</option>
+                            <option value="TESTER" {"selected" if row['role'] == "TESTER" else ""}>TESTER</option>
+                        </select>
+                        <button type="submit">Changer rôle</button>
                     </form>
                 </div>
                 """
