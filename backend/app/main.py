@@ -2470,6 +2470,52 @@ def server_user_status_change(user_id: int, status: str, request: Request):
     return RedirectResponse(url="/server/users", status_code=303)
 
 
+
+
+@app.post("/server/users/{user_id}/company/{company_id}/status/{status}")
+def server_company_access_status_change(user_id: int, company_id: int, status: str, request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import server_user_model as identity
+
+    current_email = get_logged_user_email(request)
+    current_user = identity.get_user_by_email(current_email) if current_email else None
+
+    if current_user and current_user["id"] == user_id and status != "active":
+        return HTMLResponse(
+            layout(
+                "Action refusée",
+                """
+                <div class="error">
+                    Tu ne peux pas désactiver ton propre accès société depuis cette page.
+                </div>
+                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    try:
+        identity.set_company_access_status(user_id, company_id, status)
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Erreur accès société",
+                f"""
+                <div class="error">
+                    Impossible de modifier l’accès société : {exc}
+                </div>
+                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/users", status_code=303)
+
+
 @app.get("/server/users", response_class=HTMLResponse)
 def server_users_settings_page(request: Request):
     admin_response = require_owner_or_super_admin(request)
@@ -2494,8 +2540,18 @@ def server_users_settings_page(request: Request):
             }
 
         if row["company_name"]:
+            next_access_status = "inactive" if row["access_status"] == "active" else "active"
+            access_button_label = "Désactiver accès" if row["access_status"] == "active" else "Activer accès"
+
             grouped[email]["access"].append(
-                f"{row['company_name']} — {row['role']} — {row['access_status']}"
+                f"""
+                <div style="margin-bottom:8px;">
+                    <strong>{row['company_name']}</strong> — {row['role']} — {row['access_status']}
+                    <form method="post" action="/server/users/{row['user_id']}/company/{row['company_id']}/status/{next_access_status}" style="display:inline; margin-left:8px;">
+                        <button type="submit">{access_button_label}</button>
+                    </form>
+                </div>
+                """
             )
 
     user_rows = ""

@@ -464,3 +464,36 @@ def set_user_status(user_id: int, status: str):
         )
         conn.commit()
 
+def set_company_access_status(user_id: int, company_id: int, status: str):
+    init_server_identity_tables()
+
+    allowed = {"active", "inactive"}
+    if status not in allowed:
+        raise ValueError("Statut accès société invalide")
+
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT id
+            FROM company_access
+            WHERE user_id = ? AND company_id = ?
+            """,
+            (user_id, company_id),
+        ).fetchone()
+
+        if row is None:
+            raise ValueError("Accès société introuvable")
+
+        from datetime import datetime
+        now = datetime.now().isoformat(timespec="seconds")
+
+        conn.execute(
+            """
+            UPDATE company_access
+            SET status = ?, updated_at = ?
+            WHERE user_id = ? AND company_id = ?
+            """,
+            (status, now, user_id, company_id),
+        )
+        conn.commit()
+
