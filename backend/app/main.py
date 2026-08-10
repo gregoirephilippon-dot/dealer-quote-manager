@@ -2787,9 +2787,13 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
 
     from fastapi.responses import HTMLResponse
 
+    clean_headers = dict(response.headers)
+    clean_headers.pop("content-length", None)
+    clean_headers.pop("Content-Length", None)
+
     return HTMLResponse(
         content=html,
         status_code=response.status_code,
-        headers=dict(response.headers),
+        headers=clean_headers,
     )
 
