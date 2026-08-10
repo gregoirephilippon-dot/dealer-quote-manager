@@ -2565,6 +2565,48 @@ async def server_company_access_role_change(user_id: int, company_id: int, reque
     return RedirectResponse(url="/server/users", status_code=303)
 
 
+
+
+@app.post("/server/users/access/create")
+async def server_users_create_company_access(request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import server_user_model as identity
+
+    form = await request.form()
+
+    try:
+        user_id = int(form.get("user_id") or 0)
+        company_id = int(form.get("company_id") or 0)
+        role = str(form.get("role") or "").strip()
+
+        if user_id <= 0 or company_id <= 0:
+            raise ValueError("Utilisateur ou société invalide")
+
+        if role not in ["OWNER", "SUPER_ADMIN", "COMPANY_ADMIN", "CONTRACT_MANAGER", "TESTER"]:
+            raise ValueError("Rôle invalide")
+
+        identity.grant_company_access(company_id, user_id, role)
+
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Erreur création accès",
+                f"""
+                <div class="error">
+                    Impossible de créer l’accès société : {exc}
+                </div>
+                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/users", status_code=303)
+
+
 @app.get("/server/users", response_class=HTMLResponse)
 def server_users_settings_page(request: Request):
     admin_response = require_owner_or_super_admin(request)
@@ -2574,6 +2616,16 @@ def server_users_settings_page(request: Request):
     import server_user_model as identity
 
     rows = identity.list_user_settings_rows()
+    users = identity.list_users()
+    companies = identity.list_companies()
+
+    user_options = ""
+    for user_item in users:
+        user_options += f"<option value=\"{user_item['id']}\">{user_item['email']} — {user_item['full_name'] or ''}</option>"
+
+    company_options = ""
+    for company_item in companies:
+        company_options += f"<option value=\"{company_item['id']}\">{company_item['name']}</option>"
 
     grouped = {}
     for row in rows:
@@ -2644,10 +2696,35 @@ def server_users_settings_page(request: Request):
         <p>
             Cette page est réservée aux rôles <strong>OWNER</strong> et <strong>SUPER_ADMIN</strong>.
         </p>
-        <p>
-            Version actuelle : consultation des utilisateurs, sociétés, rôles et statuts.
-            Les actions de modification seront ajoutées ensuite.
-        </p>
+    </div>
+
+    <div class="card">
+        <h3>Ajouter un accès société</h3>
+        <form method="post" action="/server/users/access/create">
+            <label>Utilisateur
+                <select name="user_id">
+                    {user_options}
+                </select>
+            </label>
+
+            <label>Société
+                <select name="company_id">
+                    {company_options}
+                </select>
+            </label>
+
+            <label>Rôle
+                <select name="role">
+                    <option value="TESTER">TESTER</option>
+                    <option value="CONTRACT_MANAGER">CONTRACT_MANAGER</option>
+                    <option value="COMPANY_ADMIN">COMPANY_ADMIN</option>
+                    <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                    <option value="OWNER">OWNER</option>
+                </select>
+            </label>
+
+            <button type="submit">Créer accès</button>
+        </form>
     </div>
 
     <table>
