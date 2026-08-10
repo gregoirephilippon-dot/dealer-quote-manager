@@ -2680,6 +2680,15 @@ async def server_user_password_change(user_id: int, request: Request):
     return RedirectResponse(url="/server/users", status_code=303)
 
 
+
+
+def generate_temporary_password(length: int = 16):
+    import secrets
+
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!?#@"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
 @app.get("/server/users", response_class=HTMLResponse)
 def server_users_settings_page(request: Request):
     admin_response = require_owner_or_super_admin(request)
@@ -2691,6 +2700,7 @@ def server_users_settings_page(request: Request):
     rows = identity.list_user_settings_rows()
     users = identity.list_users()
     companies = identity.list_companies()
+    suggested_password = generate_temporary_password()
 
     user_options = ""
     for user_item in users:
@@ -2769,6 +2779,19 @@ def server_users_settings_page(request: Request):
 
     content = f"""
     <h2>Réglage utilisateurs</h2>
+
+    <div class="card">
+        <h3>Mot de passe temporaire proposé</h3>
+        <p>
+            Copie ce mot de passe pour créer un utilisateur ou réinitialiser un mot de passe.
+        </p>
+        <p style="font-size:20px; font-weight:700; letter-spacing:1px;">
+            {suggested_password}
+        </p>
+        <p>
+            Recharge la page pour en proposer un autre.
+        </p>
+    </div>
 
     <div class="card">
         <p>
