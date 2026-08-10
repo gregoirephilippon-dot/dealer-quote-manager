@@ -2498,3 +2498,49 @@ def server_users_settings_page(request: Request):
 
     return layout("Réglage utilisateurs", content)
 
+@app.middleware("http")
+async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
+    response = await call_next(request)
+
+    content_type = response.headers.get("content-type", "")
+    if "text/html" not in content_type.lower():
+        return response
+
+    token = request.cookies.get("dealer_quote_session")
+    email = None
+
+    if token:
+        import session_security
+        email = session_security.verify_session_token(token)
+
+    is_admin = False
+    if email:
+        import server_user_model as identity
+        is_admin = identity.user_has_any_role(email, ["OWNER", "SUPER_ADMIN"])
+
+    if is_admin:
+        return response
+
+    body = b""
+    async for chunk in response.body_iterator:
+        body += chunk
+
+    html = body.decode("utf-8", errors="replace")
+
+    admin_links = [
+        '        <a href="/server/users">Utilisateurs</a>\n',
+        '        <a href="/server/identity">Identité serveur</a>\n',
+        '        <a href="/server/identity/new">Nouvelle identité</a>\n',
+    ]
+
+    for link in admin_links:
+        html = html.replace(link, "")
+
+    from fastapi.responses import HTMLResponse
+
+    return HTMLResponse(
+        content=html,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+    )
+
