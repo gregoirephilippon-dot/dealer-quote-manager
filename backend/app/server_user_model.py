@@ -384,3 +384,54 @@ def get_active_company_name_for_user(email: str) -> str:
 
     return company["name"]
 
+def get_active_roles_for_user(email: str):
+    init_server_identity_tables()
+    with get_connection() as conn:
+        return conn.execute(
+            """
+            SELECT
+                ca.role,
+                ca.status,
+                c.id AS company_id,
+                c.name AS company_name
+            FROM company_access ca
+            JOIN users u ON u.id = ca.user_id
+            JOIN companies c ON c.id = ca.company_id
+            WHERE u.email = ?
+            ORDER BY c.name, ca.role
+            """,
+            (email,),
+        ).fetchall()
+
+
+def user_has_any_role(email: str, allowed_roles):
+    rows = get_active_roles_for_user(email)
+    allowed = set(allowed_roles)
+    for row in rows:
+        if row["status"] == "active" and row["role"] in allowed:
+            return True
+    return False
+
+
+def list_user_settings_rows():
+    init_server_identity_tables()
+    with get_connection() as conn:
+        return conn.execute(
+            """
+            SELECT
+                u.id AS user_id,
+                u.email,
+                u.full_name,
+                u.status AS user_status,
+                u.created_at,
+                c.id AS company_id,
+                c.name AS company_name,
+                ca.role,
+                ca.status AS access_status
+            FROM users u
+            LEFT JOIN company_access ca ON ca.user_id = u.id
+            LEFT JOIN companies c ON c.id = ca.company_id
+            ORDER BY u.email, c.name, ca.role
+            """
+        ).fetchall()
+

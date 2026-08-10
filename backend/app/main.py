@@ -305,6 +305,7 @@ def layout(title, content):
         <a href="/dealer-discounts">Remise dealer</a>
         <a href="/price-catalog">Import price list</a>
         <a href="/server/company-switch">Changer société</a>
+        <a href="/server/users">Utilisateurs</a>
     </nav>
 </header>
 <main>{content}</main>
@@ -2360,3 +2361,106 @@ if __name__ == "__main__":
     ensure_default_settings()
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+
+def require_super_admin(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    email = get_logged_user_email(request)
+    if not email:
+        return RedirectResponse(url="/login", status_code=303)
+
+    import server_user_model as identity
+
+    if not identity.user_has_any_role(email, ["OWNER", "SUPER_ADMIN"]):
+        return HTMLResponse(
+            layout(
+                "Accès refusé",
+                """
+                <div class="error">
+                    Accès réservé au propriétaire ou au super administrateur.
+                </div>
+                <p><a class="button secondary" href="/">Retour accueil</a></p>
+                """
+            ),
+            status_code=403,
+        )
+
+    return None
+
+
+@app.get("/server/users", response_class=HTMLResponse)
+def server_users_settings_page(request: Request):
+    admin_response = require_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import server_user_model as identity
+
+    rows = identity.list_user_settings_rows()
+
+    grouped = {}
+    for row in rows:
+        email = row["email"] or ""
+        if email not in grouped:
+            grouped[email] = {
+                "user_id": row["user_id"],
+                "email": email,
+                "full_name": row["full_name"] or "",
+                "user_status": row["user_status"] or "",
+                "created_at": row["created_at"] or "",
+                "access": [],
+            }
+
+        if row["company_name"]:
+            grouped[email]["access"].append(
+                f"{row['company_name']} — {row['role']} — {row['access_status']}"
+            )
+
+    user_rows = ""
+    for user in grouped.values():
+        access_html = "<br>".join(user["access"]) if user["access"] else "<em>Aucun accès société</em>"
+        user_rows += f"""
+        <tr>
+            <td>{user['user_id']}</td>
+            <td>{user['email']}</td>
+            <td>{user['full_name']}</td>
+            <td>{user['user_status']}</td>
+            <td>{access_html}</td>
+            <td>{user['created_at']}</td>
+        </tr>
+        """
+
+    content = f"""
+    <h2>Réglage utilisateurs</h2>
+
+    <div class="card">
+        <p>
+            Cette page est réservée aux rôles <strong>OWNER</strong> et <strong>SUPER_ADMIN</strong>.
+        </p>
+        <p>
+            Version actuelle : consultation des utilisateurs, sociétés, rôles et statuts.
+            Les actions de modification seront ajoutées ensuite.
+        </p>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Email</th>
+                <th>Nom</th>
+                <th>Statut utilisateur</th>
+                <th>Accès sociétés / rôles</th>
+                <th>Créé le</th>
+            </tr>
+        </thead>
+        <tbody>
+            {user_rows}
+        </tbody>
+    </table>
+    """
+
+    return layout("Réglage utilisateurs", content)
+
