@@ -3109,3 +3109,84 @@ def server_context_page(request: Request):
         """
     )
 
+
+def get_request_company_context(request: Request):
+    import server_user_model as identity
+
+    email = get_logged_user_email(request)
+    if not email:
+        return None
+
+    return identity.get_active_company_context(email)
+
+
+def company_context_required_page():
+    from fastapi.responses import HTMLResponse
+
+    return HTMLResponse(
+        """
+        <html>
+        <head>
+            <title>Accès société requis</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background: #f3f4f6;
+                    padding: 40px;
+                }
+                .card {
+                    max-width: 620px;
+                    margin: 80px auto;
+                    background: white;
+                    padding: 28px;
+                    border-radius: 14px;
+                    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+                }
+                h1 {
+                    margin-top: 0;
+                    color: #991b1b;
+                }
+                p {
+                    line-height: 1.5;
+                }
+                a {
+                    display: inline-block;
+                    margin-top: 18px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>Accès société requis</h1>
+                <p>Aucun contexte société actif n’est disponible pour votre compte.</p>
+                <p>Contactez votre administrateur ou reconnectez-vous.</p>
+                <a href="/logout">Retour connexion</a>
+            </div>
+        </body>
+        </html>
+        """,
+        status_code=403,
+    )
+
+
+@app.middleware("http")
+async def require_company_context_for_sensitive_routes(request: Request, call_next):
+    sensitive_prefixes = (
+        "/import",
+        "/quotes",
+        "/quote",
+        "/export",
+        "/settings",
+        "/dealer-discounts",
+        "/price-catalog",
+    )
+
+    path = request.url.path
+
+    if path.startswith(sensitive_prefixes):
+        context = get_request_company_context(request)
+        if not context:
+            return company_context_required_page()
+
+    return await call_next(request)
+
