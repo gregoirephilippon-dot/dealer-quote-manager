@@ -3029,3 +3029,83 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
         headers=clean_headers,
     )
 
+
+@app.get("/server/context")
+def server_context_page(request: Request):
+    from fastapi.responses import HTMLResponse
+    import server_user_model as identity
+
+    email = get_logged_user_email(request)
+    context = identity.get_active_company_context(email) if email else None
+
+    if not context:
+        return HTMLResponse(
+            """
+            <html>
+            <head><title>Contexte société</title></head>
+            <body style="font-family:Arial;padding:30px;">
+                <h1>Contexte société</h1>
+                <p>Aucun contexte société actif trouvé.</p>
+                <p><a href="/server/users">Retour utilisateurs</a></p>
+            </body>
+            </html>
+            """,
+            status_code=403,
+        )
+
+    return HTMLResponse(
+        f"""
+        <html>
+        <head>
+            <title>Contexte société</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background: #f3f4f6;
+                    padding: 30px;
+                }}
+                .card {{
+                    background: white;
+                    border-radius: 14px;
+                    padding: 24px;
+                    max-width: 760px;
+                    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+                }}
+                table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                }}
+                td {{
+                    border-bottom: 1px solid #e5e7eb;
+                    padding: 10px;
+                }}
+                td:first-child {{
+                    font-weight: 700;
+                    width: 260px;
+                }}
+                a {{
+                    display: inline-block;
+                    margin-top: 18px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>Contexte société actif</h1>
+                <table>
+                    <tr><td>Email utilisateur</td><td>{context["email"]}</td></tr>
+                    <tr><td>Nom utilisateur</td><td>{context["full_name"]}</td></tr>
+                    <tr><td>Statut utilisateur</td><td>{context["user_status"]}</td></tr>
+                    <tr><td>ID société</td><td>{context["company_id"]}</td></tr>
+                    <tr><td>Société active</td><td>{context["company_name"]}</td></tr>
+                    <tr><td>Rôle actif</td><td>{context["role"]}</td></tr>
+                    <tr><td>Statut accès société</td><td>{context["access_status"]}</td></tr>
+                    <tr><td>Table accès détectée</td><td>{context["access_table"]}</td></tr>
+                </table>
+                <a href="/">Retour accueil</a>
+            </div>
+        </body>
+        </html>
+        """
+    )
+

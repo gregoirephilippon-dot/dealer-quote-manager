@@ -667,3 +667,102 @@ def user_has_active_company_access(email: str) -> bool:
 
     return False
 
+
+def get_active_company_context(email: str):
+    init_server_identity_tables()
+
+    user = get_user_by_email(email)
+    if not user:
+        return None
+
+    user_id = user["id"]
+
+    with get_connection() as conn:
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+
+        access_table = None
+
+        for table_row in tables:
+            table_name = table_row["name"] if "name" in table_row.keys() else table_row[0]
+
+            columns_info = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+            columns = []
+            for col in columns_info:
+                try:
+                    columns.append(col["name"])
+                except Exception:
+                    columns.append(col[1])
+
+            if (
+                "user_id" in columns
+                and "company_id" in columns
+                and "status" in columns
+                and "role" in columns
+            ):
+                access_table = table_name
+                break
+
+        if not access_table:
+            return None
+
+        access = conn.execute(
+            f"""
+            SELECT
+                user_id,
+                company_id,
+                role,
+                status
+            FROM {access_table}
+            WHERE user_id = ?
+              AND status = 'active'
+            ORDER BY company_id ASC
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+
+        if not access:
+            return None
+
+        company_id = access["company_id"]
+
+        company = None
+        for candidate in ["companies", "company", "dealer_companies", "server_companies"]:
+            table_exists = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (candidate,),
+            ).fetchone()
+
+            if not table_exists:
+                continue
+
+            company = conn.execute(
+                f"SELECT * FROM {candidate} WHERE id = ?",
+                (company_id,),
+            ).fetchone()
+
+            if company:
+                break
+
+        company_name = f"Société #{company_id}"
+        if company:
+            keys = company.keys()
+            for field in ["name", "company_name", "display_name", "label"]:
+                if field in keys and company[field]:
+                    company_name = company[field]
+                    break
+
+        return {
+            "user_id": user["id"],
+            "email": user["email"],
+            "full_name": user["full_name"] if "full_name" in user.keys() else "",
+            "user_status": user["status"],
+            "company_id": company_id,
+            "company_name": company_name,
+            "role": access["role"],
+            "access_status": access["status"],
+            "access_table": access_table,
+        }
+
