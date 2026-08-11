@@ -191,6 +191,12 @@ def login_submit(
                 status_code=403,
             )
 
+        if not identity.user_has_active_company_access(email):
+            return HTMLResponse(
+                login_page_with_error("Aucun accès société actif. Contactez votre administrateur."),
+                status_code=403,
+            )
+
         import session_security
 
         response = RedirectResponse(url="/", status_code=303)

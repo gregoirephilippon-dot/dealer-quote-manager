@@ -624,3 +624,46 @@ def set_user_password_by_id(user_id: int, new_password: str):
         )
         conn.commit()
 
+
+def user_has_active_company_access(email: str) -> bool:
+    init_server_identity_tables()
+
+    user = get_user_by_email(email)
+    if not user:
+        return False
+
+    user_id = user["id"]
+
+    with get_connection() as conn:
+        tables = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+
+        for table_row in tables:
+            table_name = table_row["name"] if "name" in table_row.keys() else table_row[0]
+
+            columns_info = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+            columns = []
+            for col in columns_info:
+                try:
+                    columns.append(col["name"])
+                except Exception:
+                    columns.append(col[1])
+
+            if "user_id" in columns and "company_id" in columns and "status" in columns:
+                count = conn.execute(
+                    f"""
+                    SELECT COUNT(*) AS count
+                    FROM {table_name}
+                    WHERE user_id = ?
+                      AND status = 'active'
+                    """,
+                    (user_id,),
+                ).fetchone()
+
+                value = count["count"] if "count" in count.keys() else count[0]
+                if value > 0:
+                    return True
+
+    return False
+
