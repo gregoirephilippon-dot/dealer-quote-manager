@@ -89,6 +89,85 @@ def current_user_page(request: Request):
         """,
     )
 
+def login_page_with_error(message: str):
+    import html as _html
+
+    safe_message = _html.escape(message or "Connexion refusée")
+
+    return f"""
+    <!doctype html>
+    <html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <title>Connexion</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                background: #f3f4f6;
+                margin: 0;
+                padding: 40px;
+            }}
+            .login-card {{
+                max-width: 420px;
+                margin: 80px auto;
+                background: white;
+                border-radius: 14px;
+                padding: 28px;
+                box-shadow: 0 10px 30px rgba(0,0,0,.08);
+            }}
+            h1 {{
+                margin-top: 0;
+            }}
+            .error {{
+                background: #fee2e2;
+                color: #991b1b;
+                border: 1px solid #fecaca;
+                padding: 12px;
+                border-radius: 10px;
+                margin-bottom: 16px;
+                font-weight: 700;
+            }}
+            label {{
+                display: block;
+                margin-top: 12px;
+                font-weight: 700;
+            }}
+            input {{
+                width: 100%;
+                padding: 10px;
+                margin-top: 6px;
+                box-sizing: border-box;
+            }}
+            button {{
+                margin-top: 18px;
+                width: 100%;
+                padding: 12px;
+                border: 0;
+                border-radius: 10px;
+                background: #2563eb;
+                color: white;
+                font-weight: 700;
+                cursor: pointer;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="login-card">
+            <h1>Connexion</h1>
+            <div class="error">{safe_message}</div>
+            <form method="post" action="/login">
+                <label>Email</label>
+                <input type="email" name="email" required autofocus>
+                <label>Mot de passe</label>
+                <input type="password" name="password" required>
+                <button type="submit">Se connecter</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+
+
 @app.post("/login")
 def login_submit(
     email: str = Form(""),
@@ -97,6 +176,21 @@ def login_submit(
     import server_user_model as identity
 
     if identity.verify_user_password(email, password):
+        user = identity.get_user_by_email(email)
+
+        user_status = None
+        if user:
+            try:
+                user_status = user["status"]
+            except Exception:
+                user_status = None
+
+        if not user or user_status != "active":
+            return HTMLResponse(
+                login_page_with_error("Compte utilisateur désactivé."),
+                status_code=403,
+            )
+
         import session_security
 
         response = RedirectResponse(url="/", status_code=303)

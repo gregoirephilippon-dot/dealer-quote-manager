@@ -203,7 +203,7 @@ def verify_user_password(email: str, password: str) -> bool:
 
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT password_hash FROM users WHERE email = ? AND status = 'active'",
+            "SELECT password_hash FROM users WHERE email = ?",
             (email,),
         ).fetchone()
 
@@ -289,14 +289,22 @@ if __name__ == "__main__":
 
 
 def get_user_by_email(email: str):
-    email = email.lower().strip()
+    init_server_identity_tables()
+
+    email = (email or "").strip().lower()
 
     with get_connection() as conn:
         return conn.execute(
             """
-            SELECT *
+            SELECT
+                id,
+                email,
+                full_name,
+                status,
+                created_at,
+                updated_at
             FROM users
-            WHERE email = ?
+            WHERE lower(email) = lower(?)
             """,
             (email,),
         ).fetchone()
