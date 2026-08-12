@@ -400,7 +400,7 @@ def layout(title, content):
 <header>
     <h1>Dealer Quote Manager</h1>
     <nav>
-        <a href="/">Historique</a>
+        <a href="/">Offres contrats</a>
         <a href="/settings">Paramètres dealer</a>
         <a href="/dealer-discounts">Remise dealer</a>
         <a href="/price-catalog">Import price list</a>
@@ -1077,18 +1077,18 @@ def home(request: Request):
             <td><strong>{margin_amount_txt}</strong></td>
             <td><strong>{margin_percent_txt}</strong></td>
             <td class="actions">
-                <a class="button green" href="/quote/{quote_id}/inputs">Inputs</a>
-                <a class="button" href="/quote/{quote_id}/services">Prestations incluses au contrat & temps</a>
-                <a class="button secondary" href="/quote/{quote_id}/export">Exporter</a>
+                <a class="button green" href="/quote/{quote_id}/inputs">Données contrat / moteur</a>
+                <a class="button" href="/quote/{quote_id}/services">Construction de l’offre</a>
+                <a class="button secondary" href="/quote/{quote_id}/export">Générer offre client</a>
                 {html_link}{pdf_link}
             </td>
         </tr>"""
 
     if not rows_html:
-        rows_html = '<tr><td colspan="15">Aucun devis pour le moment. Commence par importer un fichier Excel.</td></tr>'
+        rows_html = '<tr><td colspan="15">Aucune offre de contrat pour le moment. Commence par importer un fichier Service Calculator.</td></tr>'
 
     content = f"""
-    <h2>Historique des devis</h2>
+    <h2>Offres de contrat de service</h2>
     <div class="card">
         <strong>Société active :</strong> {active_company_name}
     </div>
@@ -1112,9 +1112,9 @@ def home(request: Request):
 
                     <label>Page concernée
                         <select name="page_context">
-                            <option>Historique</option>
+                            <option>Offres de contrat de service</option>
                             <option>Import</option>
-                            <option>Prestations incluses au contrat & temps</option>
+                            <option>Construction de l’offre</option>
                             <option>PDF</option>
                             <option>Paramètres dealer</option>
                             <option>Remise dealer</option>
@@ -1138,7 +1138,7 @@ def home(request: Request):
                         <input name="rating" type="number" min="0" max="10" step="1">
                     </label>
 
-                    <label>Devis ID concerné
+                    <label>Offre / devis ID concerné
                         <input name="quote_id" placeholder="ex : 23">
                     </label>
 
@@ -1187,7 +1187,7 @@ def home(request: Request):
         </tr></thead>
         <tbody>{rows_html}</tbody>
     </table>"""
-    return layout("Historique", content)
+    return layout("Offres contrats", content)
 
 def instructions_page():
     service_rows = ""
@@ -1311,7 +1311,7 @@ def quote_access_denied_response(quote_id: int):
                 Devis introuvable ou non autorisé pour la société active : {quote_id}
             </div>
             <p>
-                <a class="button secondary" href="/">Retour historique</a>
+                <a class="button secondary" href="/">Retour offres contrats</a>
                 <a class="button" href="/server/company-switch">Changer société</a>
             </p>
             """,
@@ -1368,8 +1368,8 @@ def quote_inputs_page(quote_id: int, request: Request):
             <label>Devise<input type="text" name="currency" value="{quote['currency'] or 'EUR'}"></label>
         </div>
         <button type="submit">Enregistrer données contrat + recalculer</button>
-        <a class="button" href="/quote/{quote_id}/services">Prestations incluses au contrat & temps</a>
-        <a class="button secondary" href="/">Retour historique</a>
+        <a class="button" href="/quote/{quote_id}/services">Construction de l’offre</a>
+        <a class="button secondary" href="/">Retour offres contrats</a>
     </form>"""
     return layout("Données contrat / moteur", content)
 
