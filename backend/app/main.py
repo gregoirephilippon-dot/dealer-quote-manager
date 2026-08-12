@@ -432,6 +432,7 @@ def layout(title, content):
         <a href="/dealer-discounts">Codes remises</a>
         <a href="/price-catalog">Catalogue pièces</a>
         <a href="/server/company-switch">Changer société</a>
+        <a href="/server/company-branding">Logo société</a>
         <a href="/login">Connexion</a>
         <a href="/logout">Déconnexion</a>
         <a href="/server/users">Utilisateurs</a>
@@ -975,6 +976,112 @@ def server_identity_create(
     return RedirectResponse("/server/identity", status_code=303)
 
 
+
+
+
+
+@app.get("/server/company-branding", response_class=HTMLResponse)
+def server_company_branding_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    import server_user_model as identity
+    import html
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    company_id = int(context["company_id"])
+    company_name = context["company_name"]
+
+    logo_filename = identity.get_company_logo_filename(company_id)
+    logo_html = "<p>Aucun logo importé pour cette société.</p>"
+
+    if logo_filename:
+        logo_url = f"/logos/{html.escape(logo_filename)}"
+        logo_html = f"""
+        <p>Logo actuel :</p>
+        <div style="padding:12px;border:1px solid #e5e7eb;border-radius:10px;background:white;">
+            <img src="{logo_url}" alt="Logo société" style="max-width:260px;max-height:120px;">
+        </div>
+        <p class="muted">Fichier : {html.escape(logo_filename)}</p>
+        """
+
+    content = f"""
+    <h2>Logo société</h2>
+
+    <div class="card">
+        <p><strong>Société active :</strong> {html.escape(str(company_name))}</p>
+        {logo_html}
+    </div>
+
+    <form method="post" action="/server/company-branding" enctype="multipart/form-data" class="card">
+        <label>Importer un logo PNG / JPG / JPEG</label>
+        <input type="file" name="logo" accept=".png,.jpg,.jpeg,image/png,image/jpeg" required>
+
+        <p class="muted">
+            Ce logo sera utilisé pour les futurs exports PDF client et dealer de cette société.
+        </p>
+
+        <button type="submit">Enregistrer le logo société</button>
+    </form>
+
+    <p>
+        <a class="button secondary" href="/">Retour offres contrats</a>
+    </p>
+    """
+
+    return layout("Logo société", content)
+
+
+@app.post("/server/company-branding", response_class=HTMLResponse)
+async def server_company_branding_upload(request: Request, logo: UploadFile = File(...)):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    import server_user_model as identity
+    import re
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    company_id = int(context["company_id"])
+    company_name = str(context["company_name"] or f"societe-{company_id}")
+
+    original_name = logo.filename or ""
+    suffix = Path(original_name).suffix.lower()
+
+    if suffix not in [".png", ".jpg", ".jpeg"]:
+        return HTMLResponse(
+            layout(
+                "Logo société",
+                """
+                <h2>Logo société</h2>
+                <div class="card">
+                    <p>Format refusé. Utilise un fichier PNG, JPG ou JPEG.</p>
+                    <p><a class="button secondary" href="/server/company-branding">Retour</a></p>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    safe_slug = re.sub(r"[^a-z0-9_-]+", "-", company_name.lower()).strip("-") or f"societe-{company_id}"
+    filename = f"company_{company_id}_{safe_slug}{suffix}"
+
+    config.LOGO_DIR.mkdir(parents=True, exist_ok=True)
+    destination = config.LOGO_DIR / filename
+
+    with destination.open("wb") as buffer:
+        shutil.copyfileobj(logo.file, buffer)
+
+    identity.set_company_logo_filename(company_id, filename)
+
+    return RedirectResponse(url="/server/company-branding", status_code=303)
 
 
 @app.get("/server/company-switch", response_class=HTMLResponse)
