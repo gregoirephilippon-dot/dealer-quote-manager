@@ -3190,3 +3190,72 @@ async def require_company_context_for_sensitive_routes(request: Request, call_ne
 
     return await call_next(request)
 
+
+def quote_access_denied_page():
+    from fastapi.responses import HTMLResponse
+
+    return HTMLResponse(
+        """
+        <html>
+        <head>
+            <title>Accès devis refusé</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background: #f3f4f6;
+                    padding: 40px;
+                }
+                .card {
+                    max-width: 620px;
+                    margin: 80px auto;
+                    background: white;
+                    padding: 28px;
+                    border-radius: 14px;
+                    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+                }
+                h1 {
+                    margin-top: 0;
+                    color: #991b1b;
+                }
+                a {
+                    display: inline-block;
+                    margin-top: 18px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>Accès devis refusé</h1>
+                <p>Ce devis n’appartient pas à votre société active.</p>
+                <p>Vous ne pouvez pas consulter, modifier ou exporter les données d’une autre société.</p>
+                <a href="/">Retour accueil</a>
+            </div>
+        </body>
+        </html>
+        """,
+        status_code=403,
+    )
+
+
+@app.middleware("http")
+async def guard_quote_company_access(request: Request, call_next):
+    import re
+    import server_user_model as identity
+
+    path = request.url.path
+
+    match = re.match(r"^/quote/(\d+)(/|$)", path)
+    if match:
+        quote_id = int(match.group(1))
+
+        context = get_request_company_context(request)
+        if not context:
+            return company_context_required_page()
+
+        company_id = context["company_id"]
+
+        if not identity.quote_belongs_to_company(quote_id, company_id):
+            return quote_access_denied_page()
+
+    return await call_next(request)
+

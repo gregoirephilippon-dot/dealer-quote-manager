@@ -766,3 +766,51 @@ def get_active_company_context(email: str):
             "access_table": access_table,
         }
 
+
+def quote_belongs_to_company(quote_id: int, company_id: int) -> bool:
+    init_server_identity_tables()
+
+    try:
+        quote_id = int(quote_id)
+        company_id = int(company_id)
+    except Exception:
+        return False
+
+    with get_connection() as conn:
+        table_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'quotes'"
+        ).fetchone()
+
+        if not table_exists:
+            return False
+
+        columns_info = conn.execute("PRAGMA table_info(quotes)").fetchall()
+        columns = []
+        for col in columns_info:
+            try:
+                columns.append(col["name"])
+            except Exception:
+                columns.append(col[1])
+
+        if "company_id" not in columns:
+            return True
+
+        quote = conn.execute(
+            """
+            SELECT id, company_id
+            FROM quotes
+            WHERE id = ?
+            """,
+            (quote_id,),
+        ).fetchone()
+
+        if not quote:
+            return False
+
+        quote_company_id = quote["company_id"]
+
+        if quote_company_id is None:
+            return False
+
+        return int(quote_company_id) == company_id
+
