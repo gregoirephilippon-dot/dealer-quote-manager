@@ -39,6 +39,33 @@ JSON_DIR = DATA_DIR / "examples"
 app = FastAPI(title="Dealer Quote Manager")
 
 
+@app.exception_handler(Exception)
+async def clean_global_error_handler(request: Request, exc: Exception):
+    import traceback
+
+    error_detail = str(exc) or exc.__class__.__name__
+    traceback.print_exc()
+
+    content = f"""
+    <h2>Une erreur est survenue</h2>
+    <div class="card">
+        <p>
+            Le logiciel a rencontré une erreur pendant le traitement.
+            Les données enregistrées ne sont pas supprimées.
+        </p>
+        <p>
+            <a class="button" href="/">Retour aux offres contrats</a>
+            <button class="button secondary" type="button" onclick="history.back()">Retour page précédente</button>
+        </p>
+    </div>
+    <div class="card">
+        <h3>Détail technique</h3>
+        <div class="error">{error_detail}</div>
+    </div>
+    """
+    return HTMLResponse(layout("Erreur", content), status_code=500)
+
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
     content = """
