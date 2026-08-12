@@ -169,3 +169,13 @@ Ou lancer depuis PowerShell :
 Les sauvegardes sont créées dans :
 
 storage\backups\
+
+### Ancien packaging Windows EXE
+
+Le script suivant est conserve uniquement pour l'ancien mode package portable :
+
+legacy_build_full_package.bat
+
+Le mode actuel serveur-v1 doit etre lance avec :
+
+start_server.bat
