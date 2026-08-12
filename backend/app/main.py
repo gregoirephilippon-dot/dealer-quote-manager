@@ -428,7 +428,7 @@ def layout(title, content):
     <h1>Dealer Quote Manager</h1>
     <nav>
         <a href="/">Offres contrats</a>
-        <a href="/settings">Paramètres dealer</a>
+        <a href="/settings">Paramètres calcul</a>
         <a href="/dealer-discounts">Remise dealer</a>
         <a href="/price-catalog">Import price list</a>
         <a href="/server/company-switch">Changer société</a>
@@ -1143,7 +1143,7 @@ def home(request: Request):
                             <option>Import</option>
                             <option>Construction de l’offre</option>
                             <option>PDF</option>
-                            <option>Paramètres dealer</option>
+                            <option>Paramètres de calcul dealer</option>
                             <option>Remise dealer</option>
                             <option>Autre</option>
                         </select>
@@ -1568,19 +1568,46 @@ def settings_page(request: Request):
     ensure_default_settings()
     settings = get_settings_dict()
     fields = [
-        ("parts_margin_percent", "Marge pièces (%)"),
-        ("labour_margin_percent", "Marge main d'œuvre (%)"),
-        ("admin_fee_percent", "Frais administratifs (%)"),
-        ("logistics_fee_percent", "Frais logistiques (%)"),
-        ("travel_fee_fixed", "Frais déplacement fixes"),
-        ("indexation_percent", "Indexation (%)"),
+        ("parts_margin_percent", "Marge pièces (%)", "Marge appliquée sur les pièces du contrat."),
+        ("labour_margin_percent", "Marge main-d’œuvre (%)", "Marge appliquée sur la main-d’œuvre."),
+        ("admin_fee_percent", "Frais administratifs (%)", "Frais de gestion, facturation et mise en place du contrat."),
+        ("logistics_fee_percent", "Frais logistiques (%)", "Frais liés à l’expédition, préparation ou gestion des pièces."),
+        ("travel_fee_fixed", "Frais déplacement fixes", "Montant fixe ajouté pour le déplacement si utilisé dans le calcul."),
+        ("indexation_percent", "Indexation annuelle (%)", "Pourcentage d’indexation prévu pour le contrat."),
     ]
-    inputs = ""
-    for key, label in fields:
-        inputs += f'<p><label><strong>{label}</strong><br><input type="number" step="0.01" name="{key}" value="{settings.get(key, 0)}"></label></p>'
 
-    content = f"<h2>Paramètres dealer</h2><div class='card'><form action='/settings' method='post'>{inputs}<button type='submit'>Enregistrer</button></form></div>"
-    return layout("Paramètres", content)
+    inputs = ""
+    for key, label, help_text in fields:
+        inputs += f"""
+        <div class="card">
+            <label>
+                <strong>{label}</strong><br>
+                <input type="number" step="0.01" name="{key}" value="{settings.get(key, 0)}">
+            </label>
+            <p class="muted">{help_text}</p>
+        </div>
+        """
+
+    content = f"""
+    <h2>Paramètres de calcul dealer</h2>
+
+    <div class="card">
+        <p>
+            Ces paramètres servent au calcul de l’offre de contrat :
+            marges, frais administratifs, frais logistiques, déplacement et indexation.
+        </p>
+        <p>
+            Page réservée aux administrateurs de la société.
+        </p>
+    </div>
+
+    <form action="/settings" method="post">
+        {inputs}
+        <button type="submit">Enregistrer les paramètres de calcul</button>
+        <a class="button secondary" href="/">Retour offres contrats</a>
+    </form>
+    """
+    return layout("Paramètres de calcul dealer", content)
 
 @app.post("/settings")
 def save_settings(
@@ -3070,7 +3097,7 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
     ]
 
     global_settings_links = [
-        '        <a href="/settings">Paramètres dealer</a>\n',
+        '        <a href="/settings">Paramètres calcul</a>\n',
         '        <a href="/dealer-discounts">Remise dealer</a>\n',
         '        <a href="/price-catalog">Import price list</a>\n',
     ]
