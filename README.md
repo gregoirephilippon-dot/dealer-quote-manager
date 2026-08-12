@@ -207,3 +207,21 @@ http://192.168.86.22:8001
 Le mode local simple reste :
 
 start_server.bat
+
+### Restaurer une sauvegarde locale
+
+Double-cliquer sur :
+
+restore_database.bat
+
+Le script liste les sauvegardes disponibles dans :
+
+storage\backups\
+
+Il demande le nom exact de la sauvegarde a restaurer.
+
+Avant remplacement, il sauvegarde automatiquement la base actuelle avec un nom :
+
+avant_restauration_YYYYMMDD-HHMMSS.sqlite
+
+Ne pas utiliser pendant que le serveur est lance.
