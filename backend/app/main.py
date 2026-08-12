@@ -39,7 +39,7 @@ JSON_DIR = DATA_DIR / "examples"
 
 app = FastAPI(title="Dealer Quote Manager")
 
-config.ensure_directories()
+config.ensure_storage_dirs()
 app.mount("/logos", StaticFiles(directory=config.LOGO_DIR), name="logos")
 
 
