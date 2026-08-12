@@ -430,7 +430,7 @@ def layout(title, content):
         <a href="/">Offres contrats</a>
         <a href="/settings">Paramètres calcul</a>
         <a href="/dealer-discounts">Codes remises</a>
-        <a href="/price-catalog">Import price list</a>
+        <a href="/price-catalog">Catalogue pièces</a>
         <a href="/server/company-switch">Changer société</a>
         <a href="/login">Connexion</a>
         <a href="/logout">Déconnexion</a>
@@ -2047,7 +2047,7 @@ def dealer_discounts_page(request: Request):
             <table>
                 <thead>
                     <tr>
-                        <th>DC</th>
+                        <th>Code remise</th>
                         <th>Famille pièces</th>
                         <th>Exemples produits</th>
                         <th>Remise dealer %</th>
@@ -2141,7 +2141,7 @@ def price_catalog_page(request: Request, q: str = ""):
     <html lang="fr">
     <head>
         <meta charset="utf-8">
-        <title>Import price list</title>
+        <title>Catalogue prix pièces</title>
         <style>
             body {{ font-family: Arial, sans-serif; margin: 26px; background: #f6f3ea; color: #172033; }}
             a {{ color: #102033; font-weight: 700; text-decoration: none; }}
@@ -2156,28 +2156,32 @@ def price_catalog_page(request: Request, q: str = ""):
         </style>
     </head>
     <body>
-        <h1>Import price list</h1>
+        <h1>Catalogue prix pièces</h1>
         <p><a href="/">Offres contrats</a></p>
 
         <div class="panel">
-            <b>Catalogue actuel :</b> {status['count']} références<br>
-            <b>Dernier fichier :</b> {status['source_file'] or '-'}<br>
+            <b>Catalogue pièces actuel :</b> {status['count']} références<br>
+            <b>Dernier fichier importé :</b> {status['source_file'] or '-'}<br>
             <b>Dernière mise à jour :</b> {status['updated_at'] or '-'}
+            <p>
+                Ce catalogue sert à retrouver une référence pièce, sa désignation,
+                son prix HT et son code remise pour les lignes Options / Customizations.
+            </p>
         </div>
 
         <div class="panel">
-            <h2>Importer le fichier prix DSP</h2>
+            <h2>Importer le fichier DSP price</h2>
             <form method="post" action="/price-catalog/upload" enctype="multipart/form-data">
                 <input type="file" name="file" accept=".xlsx,.xlsm,.xls">
-                <button type="submit">Importer le catalogue prix</button>
+                <button type="submit">Importer le catalogue pièces</button>
             </form>
             <p>Colonnes attendues : Part No, Description, Price excl VAT, Discount Code.</p>
         </div>
 
         <div class="panel">
-            <h2>Rechercher une référence</h2>
+            <h2>Rechercher une référence pièce</h2>
             <form method="get" action="/price-catalog">
-                <input name="q" value="{q}" placeholder="Référence ou désignation">
+                <input name="q" value="{q}" placeholder="Référence pièce ou désignation">
                 <button type="submit">Rechercher</button>
             </form>
         </div>
@@ -2187,8 +2191,8 @@ def price_catalog_page(request: Request, q: str = ""):
                 <tr>
                     <th>Part No</th>
                     <th>Désignation</th>
-                    <th>Prix excl VAT</th>
-                    <th>DC</th>
+                    <th>Prix HT</th>
+                    <th>Code remise</th>
                 </tr>
             </thead>
             <tbody>{result_rows}</tbody>
@@ -2222,7 +2226,7 @@ async def price_catalog_upload(request: Request, file: _OptionUploadFile = _Opti
         <p>Fichier : <b>{result['source_file']}</b></p>
         <p>Références importées : <b>{result['imported']}</b></p>
         <p>Lignes ignorées : <b>{result['skipped']}</b></p>
-        <p><a href="/price-catalog">Retour catalogue</a></p>
+        <p><a href="/price-catalog">Retour catalogue pièces</a></p>
         <p><a href="/">Offres contrats</a></p>
     </body>
     </html>
@@ -2306,12 +2310,12 @@ def _options_section_html(quote_id: int):
                 <h2>Options / Customizations</h2>
                 <p>
                     La colonne <b>Service</b> appelle une référence du fichier DSP price :
-                    Part No → Désignation → Prix excl VAT → DC.
+                    Part No → Désignation → Prix HT → Code remise.
                 </p>
                 <p class="catalog-status">
-                    Catalogue prix : <b>{catalog['count']}</b> références
+                    Catalogue pièces : <b>{catalog['count']}</b> références
                     {f" / {catalog['source_file']}" if catalog['source_file'] else ""}
-                    — <a href="/price-catalog">Importer / rechercher catalogue</a>
+                    — <a href="/price-catalog">Importer / rechercher catalogue pièces</a>
                 </p>
             </div>
             <a class="add-option" href="/quote/{quote_id}/options/add">+ Ajouter une ligne</a>
@@ -2324,7 +2328,7 @@ def _options_section_html(quote_id: int):
                         <th>Inclure</th>
                         <th>Service / Référence</th>
                         <th>ID source / Désignation</th>
-                        <th>DC</th>
+                        <th>Code remise</th>
                         <th>Prix Excel</th>
                         <th>Qté</th>
                         <th>Temps h</th>
@@ -3101,7 +3105,7 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
     global_settings_links = [
         '        <a href="/settings">Paramètres calcul</a>\n',
         '        <a href="/dealer-discounts">Codes remises</a>\n',
-        '        <a href="/price-catalog">Import price list</a>\n',
+        '        <a href="/price-catalog">Catalogue pièces</a>\n',
     ]
 
     if not is_owner_or_super_admin:
