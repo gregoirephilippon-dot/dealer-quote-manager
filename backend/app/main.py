@@ -3342,3 +3342,20 @@ async def require_admin_for_global_settings_routes(request: Request, call_next):
 
     return await call_next(request)
 
+
+@app.middleware("http")
+async def require_owner_for_server_identity_routes(request: Request, call_next):
+    path = request.url.path
+
+    protected_paths = (
+        "/server/identity",
+        "/server/identity/new",
+    )
+
+    if path in protected_paths:
+        admin_response = require_owner_or_super_admin(request)
+        if admin_response:
+            return admin_response
+
+    return await call_next(request)
+
