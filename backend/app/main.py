@@ -2238,7 +2238,7 @@ def _options_section_html(quote_id: int):
         body = """
             <tr>
                 <td colspan="12" class="empty">
-                    Aucune option ajoutée. Clique sur + Ajouter une option.
+                    Aucune option ajoutée. Clique sur + Ajouter une ligne.
                 </td>
             </tr>
         """
@@ -2247,7 +2247,7 @@ def _options_section_html(quote_id: int):
     <div class="options-panel">
         <div class="options-title">
             <div>
-                <h2>Options</h2>
+                <h2>Options / Customizations</h2>
                 <p>
                     La colonne <b>Service</b> appelle une référence du fichier DSP price :
                     Part No → Désignation → Prix excl VAT → DC.
@@ -2258,7 +2258,7 @@ def _options_section_html(quote_id: int):
                     — <a href="/price-catalog">Importer / rechercher catalogue</a>
                 </p>
             </div>
-            <a class="add-option" href="/quote/{quote_id}/options/add">+ Ajouter une option</a>
+            <a class="add-option" href="/quote/{quote_id}/options/add">+ Ajouter une ligne</a>
         </div>
 
         <form method="post" action="/quote/{quote_id}/options/save">
