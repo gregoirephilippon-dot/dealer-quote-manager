@@ -1,4 +1,6 @@
 import sys
+import base64
+import mimetypes
 from pathlib import Path
 from html import escape
 
@@ -23,6 +25,139 @@ def number(value, suffix=""):
     else:
         text = str(value)
     return f"{text}{suffix}"
+
+
+LOGO_DIR = BASE_DIR / "storage" / "logos"
+
+
+def get_company_branding(quote):
+    company_id = quote["company_id"] if "company_id" in quote.keys() else None
+
+    empty = {
+        "company_name": "Société",
+        "display_name": None,
+        "legal_name": None,
+        "address_line1": None,
+        "address_line2": None,
+        "postal_code": None,
+        "city": None,
+        "country": None,
+        "phone": None,
+        "email": None,
+        "website": None,
+        "siret": None,
+        "vat_number": None,
+        "logo_data_uri": None,
+    }
+
+    if not company_id:
+        return empty
+
+    with get_connection() as conn:
+        company = conn.execute(
+            """
+            SELECT name, display_name, legal_name, address_line1, address_line2,
+                   postal_code, city, country, phone, email, website,
+                   siret, vat_number, logo_filename
+            FROM companies
+            WHERE id = ?
+            """,
+            (company_id,),
+        ).fetchone()
+
+    if company is None:
+        empty["company_name"] = f"Société ID {company_id}"
+        return empty
+
+    display_name = company["display_name"] or company["name"] or f"Société ID {company_id}"
+
+    logo_data_uri = None
+    logo_filename = company["logo_filename"]
+    if logo_filename:
+        logo_path = LOGO_DIR / logo_filename
+        if logo_path.exists():
+            mime_type, _ = mimetypes.guess_type(str(logo_path))
+            mime_type = mime_type or "image/png"
+            encoded = base64.b64encode(logo_path.read_bytes()).decode("ascii")
+            logo_data_uri = f"data:{mime_type};base64,{encoded}"
+
+    return {
+        "company_name": company["name"] or display_name,
+        "display_name": display_name,
+        "legal_name": company["legal_name"],
+        "address_line1": company["address_line1"],
+        "address_line2": company["address_line2"],
+        "postal_code": company["postal_code"],
+        "city": company["city"],
+        "country": company["country"],
+        "phone": company["phone"],
+        "email": company["email"],
+        "website": company["website"],
+        "siret": company["siret"],
+        "vat_number": company["vat_number"],
+        "logo_data_uri": logo_data_uri,
+    }
+
+
+def render_company_identity_html(quote):
+    branding = get_company_branding(quote)
+
+    display_name = branding.get("display_name") or branding.get("company_name") or "Société"
+    legal_name = branding.get("legal_name")
+    logo_data_uri = branding.get("logo_data_uri")
+
+    parts = ['<div class="company-identity">']
+
+    if logo_data_uri:
+        parts.append(f'<img class="company-logo" src="{logo_data_uri}" alt="Logo société">')
+    else:
+        parts.append(f'<div class="company-logo-fallback">{escape(str(display_name))}</div>')
+
+    lines = []
+
+    if legal_name and legal_name != display_name:
+        lines.append(f"<strong>{escape(str(legal_name))}</strong>")
+    else:
+        lines.append(f"<strong>{escape(str(display_name))}</strong>")
+
+    for key in ["address_line1", "address_line2"]:
+        value = branding.get(key)
+        if value:
+            lines.append(escape(str(value)))
+
+    postal_city = " ".join(
+        str(v) for v in [branding.get("postal_code"), branding.get("city")]
+        if v
+    ).strip()
+    if postal_city:
+        lines.append(escape(postal_city))
+
+    if branding.get("country"):
+        lines.append(escape(str(branding["country"])))
+
+    contacts = []
+    if branding.get("phone"):
+        contacts.append(f"Tél. {escape(str(branding['phone']))}")
+    if branding.get("email"):
+        contacts.append(escape(str(branding["email"])))
+    if contacts:
+        lines.append(" - ".join(contacts))
+
+    if branding.get("website"):
+        lines.append(escape(str(branding["website"])))
+
+    legal = []
+    if branding.get("siret"):
+        legal.append(f"SIRET : {escape(str(branding['siret']))}")
+    if branding.get("vat_number"):
+        legal.append(f"TVA : {escape(str(branding['vat_number']))}")
+    if legal:
+        lines.append(" - ".join(legal))
+
+    parts.append('<div class="company-lines">' + "<br>".join(lines) + "</div>")
+    parts.append("</div>")
+
+    return "\\n".join(parts)
 
 
 def get_quote(quote_id: int):
@@ -136,6 +271,33 @@ def render_quote_html(quote, lines, interventions):
             border-radius: 14px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.08);
         }}
+
+        .company-identity {{
+            min-width: 240px;
+            max-width: 320px;
+            text-align: right;
+            font-size: 12px;
+            line-height: 1.35;
+            color: #374151;
+            margin-bottom: 10px;
+        }}
+        .company-logo {{
+            max-width: 180px;
+            max-height: 70px;
+            object-fit: contain;
+            margin-bottom: 8px;
+        }}
+        .company-logo-fallback {{
+            font-weight: bold;
+            color: #102033;
+            font-size: 18px;
+            margin-bottom: 8px;
+        }}
+        .company-lines strong {{
+            color: #102033;
+            font-size: 13px;
+        }}
+
         .header {{
             display: flex;
             justify-content: space-between;
@@ -249,7 +411,8 @@ def render_quote_html(quote, lines, interventions):
                 <div class="muted">Rapport interne dealer - ne pas envoyer au client</div>
             </div>
             <div>
-                <div class="badge">Statut : {status}</div>
+                {render_company_identity_html(quote)}
+                <div class="badge" style="margin-top: 10px;">Statut : {status}</div>
                 <div class="muted" style="margin-top: 8px;">Devis ID {quote['id']} - {created_at}</div>
             </div>
         </div>
