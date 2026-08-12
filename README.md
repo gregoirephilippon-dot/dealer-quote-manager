@@ -179,3 +179,13 @@ legacy_build_full_package.bat
 Le mode actuel serveur-v1 doit etre lance avec :
 
 start_server.bat
+
+### Verifier rapidement le projet
+
+Double-cliquer sur :
+
+check_project.bat
+
+Ou lancer depuis PowerShell :
+
+.\check_project.bat
