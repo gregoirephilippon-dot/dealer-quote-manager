@@ -3025,8 +3025,6 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
 
     admin_links = [
         '        <a href="/server/users">Utilisateurs</a>\n',
-        '        <a href="/server/identity">Identité serveur</a>\n',
-        '        <a href="/server/identity/new">Nouvelle identité</a>\n',
     ]
 
     for link in admin_links:
