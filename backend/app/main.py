@@ -429,7 +429,7 @@ def layout(title, content):
     <nav>
         <a href="/">Offres contrats</a>
         <a href="/settings">Paramètres calcul</a>
-        <a href="/dealer-discounts">Remise dealer</a>
+        <a href="/dealer-discounts">Codes remises</a>
         <a href="/price-catalog">Import price list</a>
         <a href="/server/company-switch">Changer société</a>
         <a href="/login">Connexion</a>
@@ -1144,7 +1144,7 @@ def home(request: Request):
                             <option>Construction de l’offre</option>
                             <option>PDF</option>
                             <option>Paramètres de calcul dealer</option>
-                            <option>Remise dealer</option>
+                            <option>Codes remises dealer</option>
                             <option>Autre</option>
                         </select>
                     </label>
@@ -1820,7 +1820,7 @@ def quote_packages_permanent_page(quote_id: int, request: Request):
     <body>
         <div class="top">
             <h1>Choix du contrat permanents - Devis {quote_id}</h1>
-            <div><a href="/quote/{quote_id}/services">Prestations incluses au contrat & temps</a> | <a href="/">Accueil</a></div>
+            <div><a href="/quote/{quote_id}/services">Prestations incluses au contrat & temps</a> | <a href="/">Offres contrats</a></div>
         </div>
         <p>Package actuel : <b>{current_name or 'Non défini'}</b></p>
         <div class="grid">{''.join(cards)}</div>
@@ -1921,7 +1921,7 @@ def dealer_discounts_page(request: Request):
     <html lang="fr">
     <head>
         <meta charset="utf-8">
-        <title>Remise dealer</title>
+        <title>Codes remises dealer</title>
         <style>
             body {{
                 font-family: Arial, sans-serif;
@@ -2027,9 +2027,9 @@ def dealer_discounts_page(request: Request):
     </head>
     <body>
         <div class="top">
-            <h1>Remise dealer</h1>
+            <h1>Codes remises dealer</h1>
             <div>
-                <a href="/">Accueil</a>
+                <a href="/">Offres contrats</a>
             </div>
         </div>
 
@@ -2037,8 +2037,10 @@ def dealer_discounts_page(request: Request):
             <b>Source constructeur :</b> onglet Internal Master Data, colonnes
             <b>Example products</b> et <b>Dealer discount</b>.
             <br>
+            Cette page sert à vérifier et ajuster les codes remises par famille de pièces.
+            <br>
             Les remises sont saisies en pourcentage : <b>49</b> = 49%.
-            Elles sont stockées dans la base locale et peuvent être ajustées selon le dealer.
+            Elles sont stockées dans la base et peuvent être ajustées selon la société dealer.
         </div>
 
         <form method="post" action="/dealer-discounts">
@@ -2046,10 +2048,10 @@ def dealer_discounts_page(request: Request):
                 <thead>
                     <tr>
                         <th>DC</th>
-                        <th>Group</th>
-                        <th>Example products</th>
-                        <th>Dealer discount %</th>
-                        <th>Customer type discount %</th>
+                        <th>Famille pièces</th>
+                        <th>Exemples produits</th>
+                        <th>Remise dealer %</th>
+                        <th>Remise type client %</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2058,13 +2060,13 @@ def dealer_discounts_page(request: Request):
             </table>
 
             <div class="actions">
-                <button type="submit">Enregistrer les remises</button>
-                <a class="button danger" href="/dealer-discounts/reset">Réinitialiser valeurs constructeur</a>
+                <button type="submit">Enregistrer les codes remises</button>
+                <a class="button danger" href="/dealer-discounts/reset">Réinitialiser les valeurs constructeur</a>
             </div>
 
             <div class="note">
-                Cette page rend les remises visibles et paramétrables.
-                L’application des remises dans un calcul détaillé par code DC se fera dans une étape dédiée si on décide de recalculer les pièces ligne par ligne.
+                Cette page permet de contrôler les codes remises utilisés pour les pièces.
+                Les valeurs sont conservées pour préparer le recalcul détaillé des pièces par code DC.
             </div>
         </form>
     </body>
@@ -2155,7 +2157,7 @@ def price_catalog_page(request: Request, q: str = ""):
     </head>
     <body>
         <h1>Import price list</h1>
-        <p><a href="/">Accueil</a></p>
+        <p><a href="/">Offres contrats</a></p>
 
         <div class="panel">
             <b>Catalogue actuel :</b> {status['count']} références<br>
@@ -2221,7 +2223,7 @@ async def price_catalog_upload(request: Request, file: _OptionUploadFile = _Opti
         <p>Références importées : <b>{result['imported']}</b></p>
         <p>Lignes ignorées : <b>{result['skipped']}</b></p>
         <p><a href="/price-catalog">Retour catalogue</a></p>
-        <p><a href="/">Accueil</a></p>
+        <p><a href="/">Offres contrats</a></p>
     </body>
     </html>
     """)
@@ -3098,7 +3100,7 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
 
     global_settings_links = [
         '        <a href="/settings">Paramètres calcul</a>\n',
-        '        <a href="/dealer-discounts">Remise dealer</a>\n',
+        '        <a href="/dealer-discounts">Codes remises</a>\n',
         '        <a href="/price-catalog">Import price list</a>\n',
     ]
 
