@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 from pathlib import Path
 from html import escape
 
@@ -72,55 +72,33 @@ def render_quote_html(quote, lines, interventions):
     status = escape(str(quote["status"] or ""))
     created_at = escape(str(quote["created_at"] or ""))
 
+    selling_total = quote["selling_total"] or 0
+    total_hours = quote["total_hours"] or 0
+    selling_per_hour = quote["selling_per_hour"]
+    if selling_per_hour is None and total_hours:
+        selling_per_hour = selling_total / total_hours
+
     intervention_rows = ""
     for intervention in interventions:
         intervention_rows += f"""
         <tr>
             <td>{escape(str(intervention["intervention_date"] or ""))}</td>
             <td>{number(intervention["engine_hours"], " h")}</td>
-            <td>{money(intervention["parts_cost"], currency)}</td>
-            <td>{money(intervention["labour_cost"], currency)}</td>
-            <td>{money(intervention["misc_cost"], currency)}</td>
-            <td><strong>{money(intervention["total_cost"], currency)}</strong></td>
         </tr>
         """
 
     if not intervention_rows:
         intervention_rows = """
         <tr>
-            <td colspan="6">Aucune intervention importee.</td>
+            <td colspan="2">Aucune intervention importee.</td>
         </tr>
         """
-
-    line_rows = ""
-    for line in lines[:80]:
-        line_rows += f"""
-        <tr>
-            <td>{escape(str(line["component"] or ""))}</td>
-            <td>{escape(str(line["description"] or ""))}</td>
-            <td>{escape(str(line["part_number"] or ""))}</td>
-            <td>{number(line["quantity"])}</td>
-            <td>{money(line["unit_price"], currency)}</td>
-            <td>{money(line["total_price"], currency)}</td>
-        </tr>
-        """
-
-    if not line_rows:
-        line_rows = """
-        <tr>
-            <td colspan="6">Aucune ligne detaillee importee.</td>
-        </tr>
-        """
-
-    extra_line_note = ""
-    if len(lines) > 80:
-        extra_line_note = f"<p class='note'>Seules les 80 premieres lignes sont affichees sur {len(lines)} lignes importees.</p>"
 
     html = f"""<!doctype html>
 <html lang="fr">
 <head>
     <meta charset="utf-8">
-    <title>Devis contrat service - ID {quote['id']}</title>
+    <title>Offre contrat service - ID {quote['id']}</title>
     <style>
         body {{
             font-family: Arial, Helvetica, sans-serif;
@@ -129,7 +107,7 @@ def render_quote_html(quote, lines, interventions):
             background: #f7f7f4;
         }}
         .page {{
-            max-width: 1100px;
+            max-width: 1000px;
             margin: 0 auto;
             background: white;
             padding: 32px;
@@ -192,6 +170,10 @@ def render_quote_html(quote, lines, interventions):
             font-weight: bold;
             margin-top: 6px;
         }}
+        .total {{
+            font-size: 24px;
+            color: #102033;
+        }}
         table {{
             width: 100%;
             border-collapse: collapse;
@@ -211,15 +193,6 @@ def render_quote_html(quote, lines, interventions):
         }}
         tr:nth-child(even) td {{
             background: #fafafa;
-        }}
-        .total {{
-            font-size: 24px;
-            color: #102033;
-        }}
-        .note {{
-            color: #667085;
-            font-size: 13px;
-            margin-top: 8px;
         }}
         .footer {{
             margin-top: 34px;
@@ -244,12 +217,12 @@ def render_quote_html(quote, lines, interventions):
     <div class="page">
         <div class="header">
             <div>
-                <h1>Devis contrat service</h1>
-                <div class="muted">Brouillon genere depuis ServiceCalculationExport.xlsx</div>
+                <h1>Offre contrat service</h1>
+                <div class="muted">Offre client generee par Dealer Quote Manager</div>
             </div>
             <div>
                 <div class="badge">Statut : {status}</div>
-                <div class="muted" style="margin-top: 8px;">Devis ID {quote['id']} - {created_at}</div>
+                <div class="muted" style="margin-top: 8px;">Offre ID {quote['id']} - {created_at}</div>
             </div>
         </div>
 
@@ -273,42 +246,23 @@ def render_quote_html(quote, lines, interventions):
             </div>
         </div>
 
-        <h2>Synthese financiere</h2>
+        <h2>Synthese de l offre client</h2>
         <div class="grid">
             <div class="card">
-                <div class="label">Cout brut importe</div>
-                <div class="value">{money(quote["total_cost"], currency)}</div>
-            </div>
-            <div class="card">
-                <div class="label">Prix client</div>
-                <div class="value total">{money(quote["selling_total"], currency)}</div>
+                <div class="label">Prix total contrat</div>
+                <div class="value total">{money(selling_total, currency)}</div>
             </div>
             <div class="card">
                 <div class="label">Prix mensuel</div>
                 <div class="value">{money(quote["selling_monthly"], currency)}</div>
             </div>
             <div class="card">
-                <div class="label">Prix par heure</div>
-                <div class="value">{money(quote["selling_per_hour"], currency)}/h</div>
-            </div>
-        </div>
-
-        <div class="grid">
-            <div class="card">
-                <div class="label">Pieces</div>
-                <div class="value">{money(quote["total_parts"], currency)}</div>
-            </div>
-            <div class="card">
-                <div class="label">Main d'oeuvre</div>
-                <div class="value">{money(quote["total_labour"], currency)}</div>
-            </div>
-            <div class="card">
-                <div class="label">Misc</div>
-                <div class="value">{money(quote["total_misc"], currency)}</div>
+                <div class="label">Prix horaire</div>
+                <div class="value">{money(selling_per_hour, currency)}/h</div>
             </div>
             <div class="card">
                 <div class="label">Heures contrat</div>
-                <div class="value">{number(quote["total_hours"], " h")}</div>
+                <div class="value">{number(total_hours, " h")}</div>
             </div>
         </div>
 
@@ -318,10 +272,6 @@ def render_quote_html(quote, lines, interventions):
                 <tr>
                     <th>Date</th>
                     <th>Heures moteur</th>
-                    <th>Pieces</th>
-                    <th>Main d'oeuvre</th>
-                    <th>Misc</th>
-                    <th>Total</th>
                 </tr>
             </thead>
             <tbody>
@@ -329,26 +279,11 @@ def render_quote_html(quote, lines, interventions):
             </tbody>
         </table>
 
-        <h2>Lignes detaillees importees</h2>
-        {extra_line_note}
-        <table>
-            <thead>
-                <tr>
-                    <th>Groupe</th>
-                    <th>Description</th>
-                    <th>Reference</th>
-                    <th>Quantite</th>
-                    <th>Prix unitaire</th>
-                    <th>Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                {line_rows}
-            </tbody>
-        </table>
+        <h2>Conditions et remarques</h2>
+        <p class="muted">Offre etablie sous reserve de validation technique, disponibilite des pieces et conditions contractuelles applicables.</p>
 
         <div class="footer">
-            Document de travail genere automatiquement par Dealer Quote Manager. Les conditions commerciales finales restent a valider avant envoi client.
+            Offre client generee automatiquement par Dealer Quote Manager.
         </div>
     </div>
 </body>
