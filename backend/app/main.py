@@ -1078,7 +1078,7 @@ def home(request: Request):
             <td><strong>{margin_percent_txt}</strong></td>
             <td class="actions">
                 <a class="button green" href="/quote/{quote_id}/inputs">Inputs</a>
-                <a class="button" href="/quote/{quote_id}/services">Services & temps</a>
+                <a class="button" href="/quote/{quote_id}/services">Prestations incluses au contrat & temps</a>
                 <a class="button secondary" href="/quote/{quote_id}/export">Exporter</a>
                 {html_link}{pdf_link}
             </td>
@@ -1114,7 +1114,7 @@ def home(request: Request):
                         <select name="page_context">
                             <option>Historique</option>
                             <option>Import</option>
-                            <option>Services & temps</option>
+                            <option>Prestations incluses au contrat & temps</option>
                             <option>PDF</option>
                             <option>Paramètres dealer</option>
                             <option>Remise dealer</option>
@@ -1213,10 +1213,10 @@ def instructions_page():
             <li>Public Master Data : moteur, contrat, heures, dates, limites.</li>
             <li>Internal Master Data : labour, travel, discounts, fees, inputs services.</li>
             <li>Quote Configuration : package et services inclus.</li>
-            <li>Overview / Summary Services : prix final.</li>
+            <li>Overview / Summary Prestations incluses au contrat : prix final.</li>
         </ol>
     </div>
-    <h3>Services configurables</h3>
+    <h3>Prestations incluses au contrat configurables</h3>
     <table>
         <thead><tr><th>ID</th><th>Groupe</th><th>Service</th><th>Source Excel vérifiée</th></tr></thead>
         <tbody>{service_rows}</tbody>
@@ -1368,7 +1368,7 @@ def quote_inputs_page(quote_id: int, request: Request):
             <label>Devise<input type="text" name="currency" value="{quote['currency'] or 'EUR'}"></label>
         </div>
         <button type="submit">Enregistrer données contrat + recalculer</button>
-        <a class="button" href="/quote/{quote_id}/services">Services & temps</a>
+        <a class="button" href="/quote/{quote_id}/services">Prestations incluses au contrat & temps</a>
         <a class="button secondary" href="/">Retour historique</a>
     </form>"""
     return layout("Données contrat / moteur", content)
@@ -1458,7 +1458,7 @@ def quote_services_page(quote_id: int, request: Request):
         </tr>"""
 
     content = f"""
-    <h2>Services & temps — Devis ID {quote_id}</h2>
+    <h2>Prestations incluses au contrat & temps — Devis ID {quote_id}</h2>
     
     <form action="/quote/{quote_id}/services" method="post">
         <table>
@@ -1471,11 +1471,11 @@ def quote_services_page(quote_id: int, request: Request):
             <tbody>{rows}</tbody>
         </table>
         <br>
-        <button type="submit">Enregistrer services + recalculer</button>
+        <button type="submit">Enregistrer prestations + recalculer</button>
         <a class="button secondary" href="/quote/{quote_id}/inputs">Retour données contrat</a>
         <a class="button secondary" href="/">Historique</a>
     </form>"""
-    return layout("Services & temps", content)
+    return layout("Prestations incluses au contrat & temps", content)
 
 @app.post("/quote/{quote_id}/services")
 async def save_quote_services(quote_id: int, request: Request):
@@ -1748,7 +1748,7 @@ def quote_packages_permanent_page(quote_id: int, request: Request):
     <html lang="fr">
     <head>
         <meta charset="utf-8">
-        <title>Packages - Devis {quote_id}</title>
+        <title>Choix du contrat - Devis {quote_id}</title>
         <style>
             body {{ font-family: Arial, sans-serif; margin: 28px; background: #f6f3ea; color: #172033; }}
             a {{ color: #172033; font-weight: 700; }}
@@ -1765,8 +1765,8 @@ def quote_packages_permanent_page(quote_id: int, request: Request):
     </head>
     <body>
         <div class="top">
-            <h1>Packages permanents - Devis {quote_id}</h1>
-            <div><a href="/quote/{quote_id}/services">Services & temps</a> | <a href="/">Accueil</a></div>
+            <h1>Choix du contrat permanents - Devis {quote_id}</h1>
+            <div><a href="/quote/{quote_id}/services">Prestations incluses au contrat & temps</a> | <a href="/">Accueil</a></div>
         </div>
         <p>Package actuel : <b>{current_name or 'Non défini'}</b></p>
         <div class="grid">{''.join(cards)}</div>
