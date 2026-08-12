@@ -143,3 +143,29 @@ Préparation future :
 5. déploiement VPS ou serveur interne.
 ```
 
+
+## Scripts locaux utiles
+
+### Lancer le serveur local
+
+Double-cliquer sur :
+
+start_server.bat
+
+Ou lancer depuis PowerShell :
+
+.\start_server.bat
+
+### Sauvegarder la base locale
+
+Double-cliquer sur :
+
+backup_database.bat
+
+Ou lancer depuis PowerShell :
+
+.\backup_database.bat
+
+Les sauvegardes sont créées dans :
+
+storage\backups\
