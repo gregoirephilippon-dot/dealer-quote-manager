@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from database import get_connection, init_db
 from settings import ensure_default_settings, get_settings_dict, set_setting
 from service_catalog import SERVICE_CATALOG
+import app_config as config
 from service_2_2_detail_calculation import apply_service_2_2_detail_calculation
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -37,6 +38,9 @@ EXPORT_DIR = DATA_DIR / "exports"
 JSON_DIR = DATA_DIR / "examples"
 
 app = FastAPI(title="Dealer Quote Manager")
+
+config.ensure_directories()
+app.mount("/logos", StaticFiles(directory=config.LOGO_DIR), name="logos")
 
 
 @app.exception_handler(Exception)
@@ -596,9 +600,6 @@ def health_check():
     from pathlib import Path
     import sqlite3
     import app_config as config
-
-config.ensure_directories()
-app.mount("/logos", StaticFiles(directory=config.LOGO_DIR), name="logos")
 
     config.ensure_storage_dirs()
 
