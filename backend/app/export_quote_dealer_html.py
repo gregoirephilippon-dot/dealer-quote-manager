@@ -242,10 +242,11 @@ def render_quote_html(quote, lines, interventions):
 </head>
 <body>
     <div class="page">
+        <div style="padding:12px;margin-bottom:18px;border:2px solid #b91c1c;border-radius:10px;background:#fef2f2;color:#7f1d1d;font-weight:bold;">INTERNE DEALER - NE PAS ENVOYER AU CLIENT</div>
         <div class="header">
             <div>
                 <h1>Rapport dealer interne</h1>
-                <div class="muted">Brouillon genere depuis ServiceCalculationExport.xlsx</div>
+                <div class="muted">Rapport interne dealer - ne pas envoyer au client</div>
             </div>
             <div>
                 <div class="badge">Statut : {status}</div>

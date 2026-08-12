@@ -270,6 +270,8 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     )
     story.append(title_table)
     story.append(Spacer(1, 8))
+    story.append(Paragraph("<b>INTERNE DEALER - NE PAS ENVOYER AU CLIENT</b>", styles["Section"]))
+    story.append(Spacer(1, 6))
 
     story.append(Paragraph("Informations moteur", styles["Section"]))
     add_kv_table(
