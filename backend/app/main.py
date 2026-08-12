@@ -2061,7 +2061,7 @@ def dealer_discounts_page(request: Request):
 
             <div class="actions">
                 <button type="submit">Enregistrer les codes remises</button>
-                <a class="button danger" href="/dealer-discounts/reset">Réinitialiser les valeurs constructeur</a>
+                <a class="button danger" href="/dealer-discounts/reset/confirm">Réinitialiser les valeurs constructeur</a>
             </div>
 
             <div class="note">
@@ -2083,7 +2083,47 @@ async def dealer_discounts_save(request: _DealerDiscountRequest):
     _dd_update_codes(form)
     return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
 
-@app.get("/dealer-discounts/reset")
+@app.get("/dealer-discounts/reset/confirm", response_class=_DealerDiscountHTMLResponse)
+def dealer_discounts_reset_confirm(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    return """
+    <!doctype html>
+    <html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <title>Confirmer réinitialisation remises</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 28px; background: #f6f3ea; color: #172033; }
+            .panel { background: white; border: 1px solid #d9c98b; border-radius: 16px; padding: 22px; max-width: 760px; }
+            .warning { padding: 14px; background: #fffaeb; border: 1px solid #fedf89; border-radius: 12px; margin: 16px 0; }
+            button, .button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-block; }
+            .danger { background: #b42318; color: white; }
+            .secondary { background: #102033; color: white; }
+        </style>
+    </head>
+    <body>
+        <div class="panel">
+            <h1>Confirmer la réinitialisation</h1>
+
+            <div class="warning">
+                Cette action va remplacer les codes remises actuels par les valeurs constructeur.
+                Les modifications dealer saisies sur cette page seront écrasées.
+            </div>
+
+            <form method="post" action="/dealer-discounts/reset">
+                <button class="danger" type="submit">Oui, réinitialiser les valeurs constructeur</button>
+                <a class="button secondary" href="/dealer-discounts">Annuler</a>
+            </form>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.post("/dealer-discounts/reset")
 def dealer_discounts_reset(request: Request):
     login_response = require_login(request)
     if login_response:
