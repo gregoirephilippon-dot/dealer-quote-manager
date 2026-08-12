@@ -1405,10 +1405,10 @@ def save_quote_inputs(
             UPDATE quotes
             SET customer_name=?, product_designation=?, engine_serial_number=?, product_name=?, country=?, status=?,
                 total_hours=?, hours_per_year=?, labour_rate=?, total_parts=?, total_labour=?, total_misc=?, total_cost=?, currency=?
-            WHERE id=?
+            WHERE id=? AND company_id=?
             """,
             (customer_name.strip(), product_designation.strip(), engine_serial_number.strip(), product_name.strip(), country.strip(), status,
-             total_hours, hours_per_year, labour_rate, total_parts, total_labour, total_misc, total_cost, currency.strip() or "EUR", quote_id),
+             total_hours, hours_per_year, labour_rate, total_parts, total_labour, total_misc, total_cost, currency.strip() or "EUR", quote_id, get_active_company_id_for_request(request)),
         )
         conn.commit()
 
