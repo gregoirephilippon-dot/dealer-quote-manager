@@ -31,6 +31,18 @@ def init_server_identity_tables():
                 slug TEXT UNIQUE NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
                 logo_filename TEXT,
+                display_name TEXT,
+                legal_name TEXT,
+                address_line1 TEXT,
+                address_line2 TEXT,
+                postal_code TEXT,
+                city TEXT,
+                country TEXT,
+                phone TEXT,
+                email TEXT,
+                website TEXT,
+                siret TEXT,
+                vat_number TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -68,6 +80,25 @@ def init_server_identity_tables():
         except Exception:
             pass
 
+        for column_name in [
+            "display_name",
+            "legal_name",
+            "address_line1",
+            "address_line2",
+            "postal_code",
+            "city",
+            "country",
+            "phone",
+            "email",
+            "website",
+            "siret",
+            "vat_number",
+        ]:
+            try:
+                conn.execute(f"ALTER TABLE companies ADD COLUMN {column_name} TEXT")
+            except Exception:
+                pass
+
         conn.commit()
 
 
@@ -103,7 +134,7 @@ def get_default_company_id() -> int:
 def get_company_by_id(company_id: int):
     with get_connection() as conn:
         return conn.execute(
-            "SELECT id, name, slug, status FROM companies WHERE id = ?",
+            "SELECT * FROM companies WHERE id = ?",
             (company_id,),
         ).fetchone()
 
@@ -242,7 +273,7 @@ def grant_company_access(company_id: int, user_id: int, role: str) -> int:
 def list_companies():
     with get_connection() as conn:
         return conn.execute("""
-            SELECT id, name, slug, status, logo_filename, created_at
+            SELECT id, name, slug, status, logo_filename, display_name, legal_name, city, email, phone, created_at
             FROM companies
             ORDER BY id
         """).fetchall()
@@ -426,6 +457,63 @@ def set_company_logo_filename(company_id: int, logo_filename: str | None):
             WHERE id = ?
             """,
             (logo_filename, now, company_id),
+        )
+        conn.commit()
+
+
+def update_company_branding(
+    company_id: int,
+    display_name: str | None = None,
+    legal_name: str | None = None,
+    address_line1: str | None = None,
+    address_line2: str | None = None,
+    postal_code: str | None = None,
+    city: str | None = None,
+    country: str | None = None,
+    phone: str | None = None,
+    email: str | None = None,
+    website: str | None = None,
+    siret: str | None = None,
+    vat_number: str | None = None,
+):
+    init_server_identity_tables()
+    now = datetime.now().isoformat(timespec="seconds")
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE companies
+            SET display_name = ?,
+                legal_name = ?,
+                address_line1 = ?,
+                address_line2 = ?,
+                postal_code = ?,
+                city = ?,
+                country = ?,
+                phone = ?,
+                email = ?,
+                website = ?,
+                siret = ?,
+                vat_number = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                display_name,
+                legal_name,
+                address_line1,
+                address_line2,
+                postal_code,
+                city,
+                country,
+                phone,
+                email,
+                website,
+                siret,
+                vat_number,
+                now,
+                company_id,
+            ),
         )
         conn.commit()
 
