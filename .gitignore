@@ -55,3 +55,5 @@ direct_*.py
 backend/app/*.backup_*
 data/feedback/
 data/feedback_webhook_url.txt
+
+storage/
