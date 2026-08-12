@@ -220,7 +220,7 @@ def login_submit(
 
         if not identity.user_has_active_company_access(email):
             return HTMLResponse(
-                login_page_with_error("Aucun accès société actif. Contactez votre administrateur."),
+                login_page_with_error("Aucun accès société actif actif. Contactez votre administrateur."),
                 status_code=403,
             )
 
@@ -2593,7 +2593,7 @@ def server_user_status_change(user_id: int, status: str, request: Request):
                 <div class="error">
                     Tu ne peux pas désactiver ton propre compte administrateur.
                 </div>
-                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                <p><a class="button secondary" href="/server/users">Retour gestion utilisateurs</a></p>
                 """
             ),
             status_code=400,
@@ -2609,7 +2609,7 @@ def server_user_status_change(user_id: int, status: str, request: Request):
                 <div class="error">
                     Impossible de modifier le statut utilisateur : {exc}
                 </div>
-                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                <p><a class="button secondary" href="/server/users">Retour gestion utilisateurs</a></p>
                 """
             ),
             status_code=400,
@@ -2639,7 +2639,7 @@ def server_company_access_status_change(user_id: int, company_id: int, status: s
                 <div class="error">
                     Tu ne peux pas désactiver ton propre accès société depuis cette page.
                 </div>
-                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                <p><a class="button secondary" href="/server/users">Retour gestion utilisateurs</a></p>
                 """
             ),
             status_code=400,
@@ -2655,7 +2655,7 @@ def server_company_access_status_change(user_id: int, company_id: int, status: s
                 <div class="error">
                     Impossible de modifier l’accès société : {exc}
                 </div>
-                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                <p><a class="button secondary" href="/server/users">Retour gestion utilisateurs</a></p>
                 """
             ),
             status_code=400,
@@ -2688,7 +2688,7 @@ async def server_company_access_role_change(user_id: int, company_id: int, reque
                 <div class="error">
                     Tu ne peux pas retirer ton propre rôle administrateur depuis cette page.
                 </div>
-                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                <p><a class="button secondary" href="/server/users">Retour gestion utilisateurs</a></p>
                 """
             ),
             status_code=400,
@@ -2704,7 +2704,7 @@ async def server_company_access_role_change(user_id: int, company_id: int, reque
                 <div class="error">
                     Impossible de modifier le rôle société : {exc}
                 </div>
-                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                <p><a class="button secondary" href="/server/users">Retour gestion utilisateurs</a></p>
                 """
             ),
             status_code=400,
@@ -2746,7 +2746,7 @@ async def server_users_create_company_access(request: Request):
                 <div class="error">
                     Impossible de créer l’accès société : {exc}
                 </div>
-                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                <p><a class="button secondary" href="/server/users">Retour gestion utilisateurs</a></p>
                 """
             ),
             status_code=400,
@@ -2787,7 +2787,7 @@ async def server_users_create_user(request: Request):
                 <div class="error">
                     Impossible de créer l’utilisateur : {exc}
                 </div>
-                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                <p><a class="button secondary" href="/server/users">Retour gestion utilisateurs</a></p>
                 """
             ),
             status_code=400,
@@ -2817,7 +2817,7 @@ async def server_user_password_change(user_id: int, request: Request):
                 <div class="error">
                     Impossible de modifier le mot de passe : {exc}
                 </div>
-                <p><a class="button secondary" href="/server/users">Retour utilisateurs</a></p>
+                <p><a class="button secondary" href="/server/users">Retour gestion utilisateurs</a></p>
                 """
             ),
             status_code=400,
@@ -2871,7 +2871,7 @@ def server_users_settings_page(request: Request):
 
         if row["company_name"]:
             next_access_status = "inactive" if row["access_status"] == "active" else "active"
-            access_button_label = "Désactiver accès" if row["access_status"] == "active" else "Activer accès"
+            access_button_label = "Désactiver accès société" if row["access_status"] == "active" else "Activer accès société"
 
             grouped[email]["access"].append(
                 f"""
@@ -2890,7 +2890,7 @@ def server_users_settings_page(request: Request):
                             <option value="CONTRACT_MANAGER" {"selected" if row['role'] == "CONTRACT_MANAGER" else ""}>CONTRACT_MANAGER</option>
                             <option value="TESTER" {"selected" if row['role'] == "TESTER" else ""}>TESTER</option>
                         </select>
-                        <button type="submit">Changer rôle</button>
+                        <button type="submit">Enregistrer rôle</button>
                     </form>
                 </div>
                 """
@@ -2898,7 +2898,7 @@ def server_users_settings_page(request: Request):
 
     user_rows = ""
     for user in grouped.values():
-        access_html = "<br>".join(user["access"]) if user["access"] else "<em>Aucun accès société</em>"
+        access_html = "<br>".join(user["access"]) if user["access"] else "<em>Aucun accès société actif</em>"
         next_status = "inactive" if user["user_status"] == "active" else "active"
         button_label = "Désactiver" if user["user_status"] == "active" else "Activer"
 
@@ -2916,40 +2916,49 @@ def server_users_settings_page(request: Request):
                 </form>
 
                 <form method="post" action="/server/users/{user['user_id']}/password" style="margin:0;">
-                    <input type="password" name="temporary_password" autocomplete="new-password" placeholder="Nouveau mdp temporaire" required>
-                    <button type="submit">Changer mdp</button>
+                    <input type="password" name="temporary_password" autocomplete="new-password" placeholder="Nouveau mot de passe temporaire" required>
+                    <button type="submit">Changer mot de passe</button>
                 </form>
             </td>
         </tr>
         """
 
     content = f"""
-    <h2>Réglage utilisateurs</h2>
+    <h2>Gestion des utilisateurs</h2>
+    <div class="card">
+        <p>
+            Cette page sert à créer les comptes, attribuer les accès société,
+            gérer les rôles et réinitialiser les mots de passe temporaires.
+        </p>
+        <p>
+            Un utilisateur doit avoir un compte actif ET un accès société actif pour se connecter.
+        </p>
+    </div>
 
     <div class="card">
-        <h3>Mot de passe temporaire proposé</h3>
+        <h3>Mot de passe temporaire suggéré</h3>
         <p>
-            Copie ce mot de passe pour créer un utilisateur ou réinitialiser un mot de passe.
+            Copier ce mot de passe pour créer un utilisateur ou réinitialiser un accès.
         </p>
         <p style="font-size:20px; font-weight:700; letter-spacing:1px;">
             {suggested_password}
         </p>
         <p>
-            Recharge la page pour en proposer un autre.
+            Recharger la page pour générer une nouvelle suggestion.
         </p>
     </div>
 
     <div class="card">
         <p>
-            Cette page est réservée aux rôles <strong>OWNER</strong> et <strong>SUPER_ADMIN</strong>.
+            Administration réservée aux rôles <strong>OWNER</strong> et <strong>SUPER_ADMIN</strong>.
         </p>
     </div>
 
     <div class="card">
-        <h3>Créer un utilisateur</h3>
+        <h3>Créer un nouvel utilisateur</h3>
         <p>
-            Par défaut, crée l’utilisateur en <strong>inactive</strong>.
-            Il ne pourra pas se connecter tant qu’il n’est pas activé.
+            Par défaut, créer l’utilisateur en statut <strong>inactif</strong>.
+            Il ne pourra pas se connecter tant que son compte et son accès société ne sont pas actifs.
         </p>
 
         <form method="post" action="/server/users/create">
@@ -2972,12 +2981,12 @@ def server_users_settings_page(request: Request):
                 </select>
             </label>
 
-            <button type="submit">Créer utilisateur</button>
+            <button type="submit">Créer l’utilisateur</button>
         </form>
     </div>
 
     <div class="card">
-        <h3>Ajouter un accès société</h3>
+        <h3>Ajouter un accès à une société</h3>
         <form method="post" action="/server/users/access/create">
             <label>Utilisateur
                 <select name="user_id">
@@ -3023,7 +3032,7 @@ def server_users_settings_page(request: Request):
     </table>
     """
 
-    return layout("Réglage utilisateurs", content)
+    return layout("Gestion des utilisateurs", content)
 
 @app.middleware("http")
 async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
@@ -3102,7 +3111,7 @@ def server_context_page(request: Request):
             <body style="font-family:Arial;padding:30px;">
                 <h1>Contexte société</h1>
                 <p>Aucun contexte société actif trouvé.</p>
-                <p><a href="/server/users">Retour utilisateurs</a></p>
+                <p><a href="/server/users">Retour gestion utilisateurs</a></p>
             </body>
             </html>
             """,
