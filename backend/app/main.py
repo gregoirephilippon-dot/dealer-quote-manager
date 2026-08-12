@@ -1294,6 +1294,8 @@ def home(request: Request):
             (active_company_id,),
         ).fetchall()
 
+    can_view_dealer_exports = can_access_dealer_exports(request)
+
     rows_html = ""
     for row in rows:
         currency = row["currency"] or "EUR"
@@ -1318,8 +1320,8 @@ def home(request: Request):
         dealer_html_path = EXPORT_DIR / f"quote_{quote_id}_dealer.html"
         pdf_link = f'<a class="button gold" href="/exports/quote_{quote_id}.pdf" target="_blank">PDF client</a>' if pdf_path.exists() else ""
         html_link = f'<a class="button secondary" href="/exports/quote_{quote_id}.html" target="_blank">HTML client</a>' if html_path.exists() else ""
-        dealer_pdf_link = f'<a class="button danger" href="/exports/quote_{quote_id}_dealer.pdf" target="_blank">PDF dealer</a>' if dealer_pdf_path.exists() else ""
-        dealer_html_link = f'<a class="button secondary" href="/exports/quote_{quote_id}_dealer.html" target="_blank">HTML dealer</a>' if dealer_html_path.exists() else ""
+        dealer_pdf_link = f'<a class="button danger" href="/exports/quote_{quote_id}_dealer.pdf" target="_blank">PDF dealer</a>' if can_view_dealer_exports and dealer_pdf_path.exists() else ""
+        dealer_html_link = f'<a class="button secondary" href="/exports/quote_{quote_id}_dealer.html" target="_blank">HTML dealer</a>' if can_view_dealer_exports and dealer_html_path.exists() else ""
 
         rows_html += f"""
         <tr>
@@ -1885,6 +1887,13 @@ def get_export(filename: str, request: Request):
     match = re.match(r"^quote_(\d+)(?:_dealer)?\.(pdf|html)$", filename or "")
     if match:
         quote_id = int(match.group(1))
+        is_dealer_export = "_dealer." in filename
+
+        if is_dealer_export:
+            dealer_response = require_dealer_export_access(request)
+            if dealer_response:
+                return dealer_response
+
         with get_connection() as conn:
             quote = get_quote_for_active_company_request(conn, quote_id, request)
             if quote is None:
@@ -2866,6 +2875,41 @@ def require_roles(request: Request, allowed_roles):
                 f"""
                 <div class="error">
                     Accès refusé. Rôle requis : {', '.join(allowed_roles)}
+                </div>
+                <p><a class="button secondary" href="/">Retour accueil</a></p>
+                """
+            ),
+            status_code=403,
+        )
+
+    return None
+
+
+DEALER_EXPORT_ROLES = ["OWNER", "SUPER_ADMIN", "COMPANY_ADMIN"]
+
+
+def can_access_dealer_exports(request: Request) -> bool:
+    email = get_logged_user_email(request)
+    if not email:
+        return False
+
+    import server_user_model as identity
+
+    return identity.user_has_any_role(email, DEALER_EXPORT_ROLES)
+
+
+def require_dealer_export_access(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    if not can_access_dealer_exports(request):
+        return HTMLResponse(
+            layout(
+                "Accès refusé",
+                """
+                <div class="error">
+                    Accès refusé. Les exports dealer internes sont réservés aux rôles OWNER, SUPER_ADMIN et COMPANY_ADMIN.
                 </div>
                 <p><a class="button secondary" href="/">Retour accueil</a></p>
                 """
