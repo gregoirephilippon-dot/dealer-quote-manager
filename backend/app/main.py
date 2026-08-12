@@ -1339,16 +1339,16 @@ def quote_inputs_page(quote_id: int, request: Request):
         contract_years = quote["total_hours"] / quote["hours_per_year"]
 
     content = f"""
-    <h2>Inputs devis ID {quote_id}</h2>
+    <h2>Données contrat / moteur ID {quote_id}</h2>
     
     <form action="/quote/{quote_id}/inputs" method="post">
-        <h3>Public Master Data — Client & moteur</h3>
+        <h3>Informations client, moteur et contrat</h3>
         <div class="card grid">
-            <label>Customer name<input type="text" name="customer_name" value="{quote['customer_name'] or ''}"></label>
-            <label>Product designation<input type="text" name="product_designation" value="{quote['product_designation'] or ''}"></label>
-            <label>Serial number<input type="text" name="engine_serial_number" value="{quote['engine_serial_number'] or ''}"></label>
-            <label>Product name<input type="text" name="product_name" value="{quote['product_name'] or ''}"></label>
-            <label>Country<input type="text" name="country" value="{quote['country'] or ''}"></label>
+            <label>Client<input type="text" name="customer_name" value="{quote['customer_name'] or ''}"></label>
+            <label>Désignation produit<input type="text" name="product_designation" value="{quote['product_designation'] or ''}"></label>
+            <label>Numéro de série moteur<input type="text" name="engine_serial_number" value="{quote['engine_serial_number'] or ''}"></label>
+            <label>Nom produit<input type="text" name="product_name" value="{quote['product_name'] or ''}"></label>
+            <label>Pays<input type="text" name="country" value="{quote['country'] or ''}"></label>
             <label>Statut<select name="status">
                 <option value="draft" {'selected' if quote['status'] == 'draft' else ''}>draft</option>
                 <option value="sent" {'selected' if quote['status'] == 'sent' else ''}>sent</option>
@@ -1361,17 +1361,17 @@ def quote_inputs_page(quote_id: int, request: Request):
             <label>Contract length calculée<input type="number" step="0.01" value="{fmt_number(contract_years)}" disabled></label>
             <label>Total calculation hours<input type="number" step="0.01" name="total_hours" value="{fmt_number(quote['total_hours'])}"></label>
             <label>Op hours per year<input type="number" step="0.01" name="hours_per_year" value="{fmt_number(quote['hours_per_year'])}"></label>
-            <label>Labour rate input<input type="number" step="0.01" name="labour_rate" value="{fmt_number(quote['labour_rate'])}"></label>
-            <label>Total parts cost<input type="number" step="0.01" name="total_parts" value="{fmt_number(quote['total_parts'])}"></label>
-            <label>Total labour cost<input type="number" step="0.01" name="total_labour" value="{fmt_number(quote['total_labour'])}"></label>
-            <label>Total misc cost<input type="number" step="0.01" name="total_misc" value="{fmt_number(quote['total_misc'])}"></label>
-            <label>Currency<input type="text" name="currency" value="{quote['currency'] or 'EUR'}"></label>
+            <label>Taux horaire main-d’œuvre input<input type="number" step="0.01" name="labour_rate" value="{fmt_number(quote['labour_rate'])}"></label>
+            <label>Coût total pièces<input type="number" step="0.01" name="total_parts" value="{fmt_number(quote['total_parts'])}"></label>
+            <label>Coût total main-d’œuvre<input type="number" step="0.01" name="total_labour" value="{fmt_number(quote['total_labour'])}"></label>
+            <label>Coût divers<input type="number" step="0.01" name="total_misc" value="{fmt_number(quote['total_misc'])}"></label>
+            <label>Devise<input type="text" name="currency" value="{quote['currency'] or 'EUR'}"></label>
         </div>
-        <button type="submit">Enregistrer inputs + recalculer</button>
+        <button type="submit">Enregistrer données contrat + recalculer</button>
         <a class="button" href="/quote/{quote_id}/services">Services & temps</a>
         <a class="button secondary" href="/">Retour historique</a>
     </form>"""
-    return layout("Inputs devis", content)
+    return layout("Données contrat / moteur", content)
 
 @app.post("/quote/{quote_id}/inputs")
 def save_quote_inputs(
@@ -1472,7 +1472,7 @@ def quote_services_page(quote_id: int, request: Request):
         </table>
         <br>
         <button type="submit">Enregistrer services + recalculer</button>
-        <a class="button secondary" href="/quote/{quote_id}/inputs">Retour inputs</a>
+        <a class="button secondary" href="/quote/{quote_id}/inputs">Retour données contrat</a>
         <a class="button secondary" href="/">Historique</a>
     </form>"""
     return layout("Services & temps", content)
