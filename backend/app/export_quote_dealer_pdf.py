@@ -33,28 +33,115 @@ LOGO_DIR = BASE_DIR / "storage" / "logos"
 def get_company_branding(quote):
     company_id = quote["company_id"] if "company_id" in quote.keys() else None
 
+    empty = {
+        "company_name": "Société",
+        "display_name": None,
+        "legal_name": None,
+        "address_line1": None,
+        "address_line2": None,
+        "postal_code": None,
+        "city": None,
+        "country": None,
+        "phone": None,
+        "email": None,
+        "website": None,
+        "siret": None,
+        "vat_number": None,
+        "logo_path": None,
+    }
+
     if not company_id:
-        return "Société", None
+        return empty
 
     with get_connection() as conn:
         company = conn.execute(
-            "SELECT name, logo_filename FROM companies WHERE id = ?",
+            """
+            SELECT name, display_name, legal_name, address_line1, address_line2,
+                   postal_code, city, country, phone, email, website,
+                   siret, vat_number, logo_filename
+            FROM companies
+            WHERE id = ?
+            """,
             (company_id,),
         ).fetchone()
 
     if company is None:
-        return f"Société ID {company_id}", None
+        empty["company_name"] = f"Société ID {company_id}"
+        return empty
 
-    company_name = company["name"] or f"Société ID {company_id}"
+    display_name = company["display_name"] or company["name"] or f"Société ID {company_id}"
+
+    logo_path = None
     logo_filename = company["logo_filename"]
-
     if logo_filename:
-        logo_path = LOGO_DIR / logo_filename
-        if logo_path.exists():
-            return company_name, logo_path
+        candidate = LOGO_DIR / logo_filename
+        if candidate.exists():
+            logo_path = candidate
 
-    return company_name, None
+    return {
+        "company_name": company["name"] or display_name,
+        "display_name": display_name,
+        "legal_name": company["legal_name"],
+        "address_line1": company["address_line1"],
+        "address_line2": company["address_line2"],
+        "postal_code": company["postal_code"],
+        "city": company["city"],
+        "country": company["country"],
+        "phone": company["phone"],
+        "email": company["email"],
+        "website": company["website"],
+        "siret": company["siret"],
+        "vat_number": company["vat_number"],
+        "logo_path": logo_path,
+    }
 
+
+def company_identity_html(branding):
+    lines = []
+
+    legal_name = branding.get("legal_name")
+    display_name = branding.get("display_name") or branding.get("company_name") or "Société"
+
+    if legal_name and legal_name != display_name:
+        lines.append(f"<b>{legal_name}</b>")
+    else:
+        lines.append(f"<b>{display_name}</b>")
+
+    for key in ["address_line1", "address_line2"]:
+        value = branding.get(key)
+        if value:
+            lines.append(str(value))
+
+    postal_city = " ".join(
+        str(v) for v in [branding.get("postal_code"), branding.get("city")]
+        if v
+    ).strip()
+    if postal_city:
+        lines.append(postal_city)
+
+    if branding.get("country"):
+        lines.append(str(branding["country"]))
+
+    contacts = []
+    if branding.get("phone"):
+        contacts.append(f"Tél. {branding['phone']}")
+    if branding.get("email"):
+        contacts.append(str(branding["email"]))
+    if contacts:
+        lines.append(" - ".join(contacts))
+
+    if branding.get("website"):
+        lines.append(str(branding["website"]))
+
+    legal = []
+    if branding.get("siret"):
+        legal.append(f"SIRET : {branding['siret']}")
+    if branding.get("vat_number"):
+        legal.append(f"TVA : {branding['vat_number']}")
+    if legal:
+        lines.append(" - ".join(legal))
+
+    return "<br/>".join(lines)
 
 def money(value, currency="EUR"):
     if value is None:
@@ -171,7 +258,9 @@ def add_kv_table(story, rows, col_widths=None):
 
 
 def build_logo_block(quote):
-    company_name, logo_path = get_company_branding(quote)
+    branding = get_company_branding(quote)
+    company_name = branding.get("display_name") or branding.get("company_name") or "Société"
+    logo_path = branding.get("logo_path")
 
     if not logo_path:
         return Paragraph(f"<b>{company_name}</b>", ParagraphStyle(
@@ -201,6 +290,20 @@ def build_logo_block(quote):
             textColor=colors.HexColor("#102033"),
         ))
 
+
+def build_company_identity_block(quote):
+    branding = get_company_branding(quote)
+    return [
+        build_logo_block(quote),
+        Spacer(1, 4),
+        Paragraph(company_identity_html(branding), ParagraphStyle(
+            name="CompanyIdentity",
+            fontName="Helvetica",
+            fontSize=7.5,
+            leading=9,
+            textColor=colors.HexColor("#374151"),
+        )),
+    ]
 
 def build_pdf(quote, lines, interventions, settings, services, output_path: Path):
     currency = quote["currency"] or "EUR"
@@ -261,7 +364,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     title_table = Table(
         [
             [
-                build_logo_block(quote),
+                build_company_identity_block(quote),
                 Paragraph("Rapport dealer interne", styles["TitleBlue"]),
                 Paragraph(f"Devis ID {quote['id']}<br/>Statut : {quote['status']}<br/>{quote['created_at']}", styles["RightSmall"]),
             ]
@@ -462,7 +565,9 @@ def export_quote_dealer_pdf(quote_id: int):
     print(f"Moteur : {quote['product_designation']} / SN {quote['engine_serial_number']}")
     print(f"Prix client : {money(quote['selling_total'], quote['currency'] or 'EUR')}")
 
-    company_name, logo_path = get_company_branding(quote)
+    branding = get_company_branding(quote)
+    logo_path = branding.get("logo_path")
+    company_name = branding.get("display_name") or branding.get("company_name")
     if logo_path:
         print(f"Logo société utilisé : {logo_path}")
     else:
