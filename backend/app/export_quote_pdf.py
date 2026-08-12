@@ -27,23 +27,33 @@ except ImportError:
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 EXPORT_DIR = BASE_DIR / "data" / "exports"
-ASSETS_DIR = BASE_DIR / "data" / "assets"
-
-LOGO_CANDIDATES = [
-    ASSETS_DIR / "gwen_service_logo.png",
-    ASSETS_DIR / "gwen_service_logo.jpg",
-    ASSETS_DIR / "gwen_service_logo.jpeg",
-    ASSETS_DIR / "logo_gwen_service.png",
-    ASSETS_DIR / "logo_gwen_service.jpg",
-    ASSETS_DIR / "logo.png",
-]
+LOGO_DIR = BASE_DIR / "storage" / "logos"
 
 
-def find_logo_path():
-    for path in LOGO_CANDIDATES:
-        if path.exists():
-            return path
-    return None
+def get_company_branding(quote):
+    company_id = quote["company_id"] if "company_id" in quote.keys() else None
+
+    if not company_id:
+        return "Société", None
+
+    with get_connection() as conn:
+        company = conn.execute(
+            "SELECT name, logo_filename FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+
+    if company is None:
+        return f"Société ID {company_id}", None
+
+    company_name = company["name"] or f"Société ID {company_id}"
+    logo_filename = company["logo_filename"]
+
+    if logo_filename:
+        logo_path = LOGO_DIR / logo_filename
+        if logo_path.exists():
+            return company_name, logo_path
+
+    return company_name, None
 
 
 def money(value, currency="EUR"):
@@ -160,10 +170,11 @@ def add_kv_table(story, rows, col_widths=None):
     story.append(Spacer(1, 8))
 
 
-def build_logo_block():
-    logo_path = find_logo_path()
+def build_logo_block(quote):
+    company_name, logo_path = get_company_branding(quote)
+
     if not logo_path:
-        return Paragraph("<b>GWEN SERVICE</b>", ParagraphStyle(
+        return Paragraph(f"<b>{company_name}</b>", ParagraphStyle(
             name="LogoFallback",
             fontName="Helvetica-Bold",
             fontSize=16,
@@ -182,7 +193,7 @@ def build_logo_block():
         logo.drawHeight = height * scale
         return logo
     except Exception:
-        return Paragraph("<b>GWEN SERVICE</b>", ParagraphStyle(
+        return Paragraph(f"<b>{company_name}</b>", ParagraphStyle(
             name="LogoFallbackError",
             fontName="Helvetica-Bold",
             fontSize=16,
@@ -250,7 +261,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     title_table = Table(
         [
             [
-                build_logo_block(),
+                build_logo_block(quote),
                 Paragraph("Devis contrat service", styles["TitleBlue"]),
                 Paragraph(f"Devis ID {quote['id']}<br/>Statut : {quote['status']}<br/>{quote['created_at']}", styles["RightSmall"]),
             ]
@@ -380,7 +391,6 @@ def export_quote_pdf(quote_id: int):
         return None
 
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
     output_path = EXPORT_DIR / f"quote_{quote_id}.pdf"
 
     build_pdf(quote, lines, interventions, settings, services, output_path)
@@ -390,11 +400,11 @@ def export_quote_pdf(quote_id: int):
     print(f"Moteur : {quote['product_designation']} / SN {quote['engine_serial_number']}")
     print(f"Prix client : {money(quote['selling_total'], quote['currency'] or 'EUR')}")
 
-    logo_path = find_logo_path()
+    company_name, logo_path = get_company_branding(quote)
     if logo_path:
-        print(f"Logo utilise : {logo_path}")
+        print(f"Logo société utilisé : {logo_path}")
     else:
-        print(f"Logo non trouve. Ajoute-le dans : {ASSETS_DIR}\\gwen_service_logo.png")
+        print(f"Aucun logo société trouvé. Fallback texte : {company_name}")
 
     return output_path
 
