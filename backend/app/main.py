@@ -2211,8 +2211,19 @@ def price_catalog_page(request: Request, q: str = ""):
 
         <div class="panel">
             <h2>Importer le fichier DSP price</h2>
+            <div style="padding:12px; background:#fffaeb; border:1px solid #fedf89; border-radius:12px; margin-bottom:12px;">
+                L’import d’un nouveau fichier DSP price remplace ou actualise le catalogue pièces utilisé
+                pour les recherches de références et les lignes Options / Customizations.
+            </div>
+
             <form method="post" action="/price-catalog/upload" enctype="multipart/form-data">
-                <input type="file" name="file" accept=".xlsx,.xlsm,.xls">
+                <input type="file" name="file" accept=".xlsx,.xlsm,.xls" required>
+
+                <label style="display:block; margin:12px 0;">
+                    <input type="checkbox" name="confirm_import" value="yes" required>
+                    Je confirme vouloir importer ce catalogue pièces.
+                </label>
+
                 <button type="submit">Importer le catalogue pièces</button>
             </form>
             <p>Colonnes attendues : Part No, Description, Price excl VAT, Discount Code.</p>
@@ -2242,10 +2253,28 @@ def price_catalog_page(request: Request, q: str = ""):
     """
 
 @app.post("/price-catalog/upload")
-async def price_catalog_upload(request: Request, file: _OptionUploadFile = _OptionFile(...)):
+async def price_catalog_upload(
+    request: Request,
+    file: _OptionUploadFile = _OptionFile(...),
+    confirm_import: str = Form(""),
+):
     login_response = require_login(request)
     if login_response:
         return login_response
+
+    if confirm_import != "yes":
+        return _OptionHTMLResponse("""
+        <!doctype html>
+        <html lang="fr">
+        <head><meta charset="utf-8"><title>Import non confirmé</title></head>
+        <body style="font-family:Arial;margin:28px;">
+            <h1>Import non confirmé</h1>
+            <p>Le catalogue pièces n’a pas été importé.</p>
+            <p>La case de confirmation est obligatoire avant import.</p>
+            <p><a href="/price-catalog">Retour catalogue pièces</a></p>
+        </body>
+        </html>
+        """, status_code=400)
 
     upload_dir = BASE_DIR / "data" / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
