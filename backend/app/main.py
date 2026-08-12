@@ -38,6 +38,9 @@ JSON_DIR = DATA_DIR / "examples"
 
 app = FastAPI(title="Dealer Quote Manager")
 
+config.ensure_directories()
+app.mount("/logos", StaticFiles(directory=config.LOGO_DIR), name="logos")
+
 
 @app.exception_handler(Exception)
 async def clean_global_error_handler(request: Request, exc: Exception):
