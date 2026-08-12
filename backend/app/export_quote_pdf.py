@@ -128,7 +128,7 @@ def footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(colors.HexColor("#667085"))
-    canvas.drawString(18 * mm, 12 * mm, "Dealer Quote Manager - document de travail")
+    canvas.drawString(18 * mm, 12 * mm, "Dealer Quote Manager - offre client")
     canvas.drawRightString(192 * mm, 12 * mm, f"Page {doc.page}")
     canvas.restoreState()
 
@@ -283,31 +283,25 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         ],
     )
 
-    total_cost = quote["total_cost"] or 0
     selling_total = quote["selling_total"] or 0
     total_hours = quote["total_hours"] or 0
+    selling_per_hour = quote["selling_per_hour"]
+    if selling_per_hour is None and total_hours:
+        selling_per_hour = selling_total / total_hours
 
-    cost_per_hour = total_cost / total_hours if total_hours else None
-    margin_amount = selling_total - total_cost
-    margin_percent = (margin_amount / total_cost * 100) if total_cost else None
-    margin_percent_txt = f"{margin_percent:.2f} %" if margin_percent is not None else "-"
-
-    story.append(Paragraph("Synthese financiere", styles["Section"]))
+    story.append(Paragraph("Synthese de l offre client", styles["Section"]))
     add_kv_table(
         story,
         [
-            ["Cout brut importe", money(quote["total_cost"], currency), "Prix client", money(quote["selling_total"], currency)],
-            ["Cout importe / h", money(cost_per_hour, currency) + "/h", "Prix client / h", money(quote["selling_per_hour"], currency) + "/h"],
-            ["Marge", money(margin_amount, currency), "Taux de marge", margin_percent_txt],
-            ["Prix mensuel", money(quote["selling_monthly"], currency), "Services inclus", str(len(services))],
-            ["Pieces", money(quote["total_parts"], currency), "Main d'oeuvre", money(quote["total_labour"], currency)],
-            ["Misc", money(quote["total_misc"], currency), "", ""],
+            ["Prix total contrat", money(selling_total, currency), "Prix mensuel", money(quote["selling_monthly"], currency)],
+            ["Prix horaire", money(selling_per_hour, currency) + "/h" if selling_per_hour is not None else "-", "Services inclus", str(len(services))],
+            ["Heures contrat", number(total_hours, " h"), "Devise", currency],
         ],
     )
 
     if services:
-        story.append(Paragraph("Services additionnels inclus", styles["Section"]))
-        service_data = [["ID", "Service", "Temps", "Qte", "Prix fixe", "Total"]]
+        story.append(Paragraph("Services inclus", styles["Section"]))
+        service_data = [["ID", "Service", "Temps", "Qte"]]
         for service in services:
             service_data.append(
                 [
@@ -315,12 +309,10 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
                     service["service_name"] or "",
                     number(service["work_time_hours"], " h"),
                     number(service["quantity"]),
-                    money(service["fixed_price"], currency),
-                    money(service["calculated_price"], currency),
                 ]
             )
 
-        service_table = Table(service_data, colWidths=[18 * mm, 74 * mm, 22 * mm, 18 * mm, 28 * mm, 28 * mm], repeatRows=1)
+        service_table = Table(service_data, colWidths=[22 * mm, 105 * mm, 26 * mm, 22 * mm], repeatRows=1)
         service_table.setStyle(
             TableStyle(
                 [
@@ -328,7 +320,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
                     ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E5E7EB")),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FAFAFA")]),
@@ -339,33 +331,22 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         )
         story.append(service_table)
 
-    story.append(Paragraph("Parametres dealer appliques", styles["Section"]))
-    settings_rows = [
-        ["Marge pieces", f"{settings.get('parts_margin_percent', 0)} %", "Marge main d'oeuvre", f"{settings.get('labour_margin_percent', 0)} %"],
-        ["Frais admin", f"{settings.get('admin_fee_percent', 0)} %", "Frais logistique", f"{settings.get('logistics_fee_percent', 0)} %"],
-        ["Frais deplacement fixes", money(settings.get("travel_fee_fixed", 0), currency), "Indexation", f"{settings.get('indexation_percent', 0)} %"],
-    ]
-    add_kv_table(story, settings_rows)
+    # Parametres dealer internes non affiches dans l offre client.
 
     story.append(Paragraph("Planning des interventions", styles["Section"]))
-
-    intervention_data = [["Date", "Heures", "Pieces", "M.O.", "Misc", "Total"]]
+    intervention_data = [["Date", "Heures moteur"]]
     for intervention in interventions:
         intervention_data.append(
             [
                 intervention["intervention_date"] or "",
                 number(intervention["engine_hours"], " h"),
-                money(intervention["parts_cost"], currency),
-                money(intervention["labour_cost"], currency),
-                money(intervention["misc_cost"], currency),
-                money(intervention["total_cost"], currency),
             ]
         )
 
     if len(intervention_data) == 1:
-        intervention_data.append(["-", "-", "-", "-", "-", "-"])
+        intervention_data.append(["-", "-"])
 
-    table = Table(intervention_data, colWidths=[28 * mm, 26 * mm, 32 * mm, 28 * mm, 24 * mm, 34 * mm], repeatRows=1)
+    table = Table(intervention_data, colWidths=[55 * mm, 55 * mm], repeatRows=1)
     table.setStyle(
         TableStyle(
             [
@@ -373,10 +354,9 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E5E7EB")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FAFAFA")]),
                 ("TOPPADDING", (0, 0), (-1, -1), 4),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
@@ -385,49 +365,9 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     )
     story.append(table)
 
-    story.append(PageBreak())
-    story.append(Paragraph("Lignes detaillees importees", styles["Section"]))
-    story.append(Spacer(1, 6))
-
-    line_data = [["Groupe", "Description", "Reference", "Qte", "PU", "Total"]]
-    max_lines = 120
-    for line in lines[:max_lines]:
-        line_data.append(
-            [
-                str(line["component"] or ""),
-                str(line["description"] or ""),
-                str(line["part_number"] or ""),
-                number(line["quantity"]),
-                money(line["unit_price"], currency),
-                money(line["total_price"], currency),
-            ]
-        )
-
-    if len(lines) > max_lines:
-        line_data.append(["...", f"Affichage limite aux {max_lines} premieres lignes sur {len(lines)}", "", "", "", ""])
-
-    if len(line_data) == 1:
-        line_data.append(["-", "-", "-", "-", "-", "-"])
-
-    line_table = Table(line_data, colWidths=[24 * mm, 54 * mm, 28 * mm, 16 * mm, 28 * mm, 28 * mm], repeatRows=1)
-    line_table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#102033")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 0), (-1, -1), 7),
-                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E5E7EB")),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FAFAFA")]),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ]
-        )
-    )
-    story.append(line_table)
+    story.append(Spacer(1, 10))
+    story.append(Paragraph("Conditions et remarques", styles["Section"]))
+    story.append(Paragraph("Offre etablie sous reserve de validation technique, disponibilite des pieces et conditions contractuelles applicables.", styles["Small"]))
 
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
 
