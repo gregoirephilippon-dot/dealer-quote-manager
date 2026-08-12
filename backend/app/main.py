@@ -932,6 +932,10 @@ def server_identity_create(
     full_name: str = Form(""),
     role: str = Form(...),
 ):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
     import server_user_model as identity
     from fastapi.responses import RedirectResponse
 
