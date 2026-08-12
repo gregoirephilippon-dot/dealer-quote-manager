@@ -3453,6 +3453,7 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
         '        <a href="/settings">Paramètres calcul</a>\n',
         '        <a href="/dealer-discounts">Codes remises</a>\n',
         '        <a href="/price-catalog">Catalogue pièces</a>\n',
+        '        <a href="/server/company-branding">Identité société</a>\n',
     ]
 
     if not is_owner_or_super_admin:
@@ -3757,6 +3758,7 @@ async def require_admin_for_global_settings_routes(request: Request, call_next):
         "/settings",
         "/dealer-discounts",
         "/price-catalog",
+        "/server/company-branding",
     )
 
     path = request.url.path
