@@ -30,6 +30,7 @@ def init_server_identity_tables():
                 name TEXT NOT NULL,
                 slug TEXT UNIQUE NOT NULL,
                 status TEXT NOT NULL DEFAULT 'active',
+                logo_filename TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
@@ -61,6 +62,11 @@ def init_server_identity_tables():
                 FOREIGN KEY(user_id) REFERENCES users(id)
             )
         """)
+
+        try:
+            conn.execute("ALTER TABLE companies ADD COLUMN logo_filename TEXT")
+        except Exception:
+            pass
 
         conn.commit()
 
@@ -236,7 +242,7 @@ def grant_company_access(company_id: int, user_id: int, role: str) -> int:
 def list_companies():
     with get_connection() as conn:
         return conn.execute("""
-            SELECT id, name, slug, status, created_at
+            SELECT id, name, slug, status, logo_filename, created_at
             FROM companies
             ORDER BY id
         """).fetchall()
@@ -391,6 +397,37 @@ def get_active_company_name_for_user(email: str) -> str:
         return f"Société ID {company_id}"
 
     return company["name"]
+
+
+def get_company_logo_filename(company_id: int):
+    init_server_identity_tables()
+
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT logo_filename FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return row["logo_filename"]
+
+
+def set_company_logo_filename(company_id: int, logo_filename: str | None):
+    init_server_identity_tables()
+    now = datetime.now().isoformat(timespec="seconds")
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE companies
+            SET logo_filename = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (logo_filename, now, company_id),
+        )
+        conn.commit()
 
 def get_active_roles_for_user(email: str):
     init_server_identity_tables()
