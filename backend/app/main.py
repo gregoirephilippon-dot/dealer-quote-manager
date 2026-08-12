@@ -436,7 +436,7 @@ def layout(title, content):
         <a href="/dealer-discounts">Codes remises</a>
         <a href="/price-catalog">Catalogue pièces</a>
         <a href="/server/company-switch">Changer société</a>
-        <a href="/server/company-branding">Logo société</a>
+        <a href="/server/company-branding">Identité société</a>
         <a href="/login">Connexion</a>
         <a href="/logout">Déconnexion</a>
         <a href="/server/users">Utilisateurs</a>
@@ -998,11 +998,21 @@ def server_company_branding_page(request: Request):
         return company_context_required_page()
 
     company_id = int(context["company_id"])
-    company_name = context["company_name"]
+    company = identity.get_company_by_id(company_id)
 
-    logo_filename = identity.get_company_logo_filename(company_id)
+    if not company:
+        return HTMLResponse("Société introuvable", status_code=404)
+
+    def value(field):
+        try:
+            return html.escape(str(company[field] or ""))
+        except Exception:
+            return ""
+
+    company_name = value("name")
+    logo_filename = company["logo_filename"] if "logo_filename" in company.keys() else None
+
     logo_html = "<p>Aucun logo importé pour cette société.</p>"
-
     if logo_filename:
         logo_url = f"/logos/{html.escape(logo_filename)}"
         logo_html = f"""
@@ -1014,34 +1024,139 @@ def server_company_branding_page(request: Request):
         """
 
     content = f"""
-    <h2>Logo société</h2>
+    <section class="card">
+        <h2>Identité société</h2>
+        <p class="muted">Société active : <strong>{company_name}</strong></p>
+        <p class="muted">Ces informations seront utilisées pour présenter proprement les devis et exports.</p>
+    </section>
 
-    <div class="card">
-        <p><strong>Société active :</strong> {html.escape(str(company_name))}</p>
+    <section class="card">
+        <h3>Logo</h3>
         {logo_html}
-    </div>
 
-    <form method="post" action="/server/company-branding" enctype="multipart/form-data" class="card">
-        <label>Importer un logo PNG / JPG / JPEG</label>
-        <input type="file" name="logo" accept=".png,.jpg,.jpeg,image/png,image/jpeg" required>
+        <form method="post" action="/server/company-branding/logo" enctype="multipart/form-data">
+            <label>Importer un logo PNG/JPG</label>
+            <input type="file" name="logo" accept=".png,.jpg,.jpeg" required>
+            <button type="submit">Importer le logo</button>
+        </form>
+    </section>
 
-        <p class="muted">
-            Ce logo sera utilisé pour les futurs exports PDF client et dealer de cette société.
-        </p>
+    <section class="card">
+        <h3>Informations société</h3>
 
-        <button type="submit">Enregistrer le logo société</button>
-    </form>
+        <form method="post" action="/server/company-branding">
+            <label>Nom affiché sur le devis</label>
+            <input name="display_name" value="{value("display_name")}" placeholder="{company_name}">
 
-    <p>
-        <a class="button secondary" href="/">Retour offres contrats</a>
-    </p>
+            <label>Raison sociale</label>
+            <input name="legal_name" value="{value("legal_name")}" placeholder="Ex : GWEN SERVICE SAS">
+
+            <label>Adresse ligne 1</label>
+            <input name="address_line1" value="{value("address_line1")}" placeholder="Rue, ZA, bâtiment...">
+
+            <label>Adresse ligne 2</label>
+            <input name="address_line2" value="{value("address_line2")}" placeholder="Complément d'adresse">
+
+            <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;">
+                <div>
+                    <label>Code postal</label>
+                    <input name="postal_code" value="{value("postal_code")}">
+                </div>
+                <div>
+                    <label>Ville</label>
+                    <input name="city" value="{value("city")}">
+                </div>
+            </div>
+
+            <label>Pays</label>
+            <input name="country" value="{value("country")}" placeholder="France">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div>
+                    <label>Téléphone</label>
+                    <input name="phone" value="{value("phone")}">
+                </div>
+                <div>
+                    <label>Email</label>
+                    <input name="email" value="{value("email")}">
+                </div>
+            </div>
+
+            <label>Site web</label>
+            <input name="website" value="{value("website")}" placeholder="https://...">
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div>
+                    <label>SIRET</label>
+                    <input name="siret" value="{value("siret")}">
+                </div>
+                <div>
+                    <label>TVA intracommunautaire</label>
+                    <input name="vat_number" value="{value("vat_number")}">
+                </div>
+            </div>
+
+            <button type="submit">Enregistrer l'identité société</button>
+        </form>
+    </section>
     """
 
-    return layout("Logo société", content)
+    return layout("Identité société", content)
 
 
 @app.post("/server/company-branding", response_class=HTMLResponse)
-async def server_company_branding_upload(request: Request, logo: UploadFile = File(...)):
+async def server_company_branding_update(
+    request: Request,
+    display_name: str = Form(""),
+    legal_name: str = Form(""),
+    address_line1: str = Form(""),
+    address_line2: str = Form(""),
+    postal_code: str = Form(""),
+    city: str = Form(""),
+    country: str = Form(""),
+    phone: str = Form(""),
+    email: str = Form(""),
+    website: str = Form(""),
+    siret: str = Form(""),
+    vat_number: str = Form(""),
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    import server_user_model as identity
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    company_id = int(context["company_id"])
+
+    def clean(value: str):
+        value = (value or "").strip()
+        return value or None
+
+    identity.update_company_branding(
+        company_id=company_id,
+        display_name=clean(display_name),
+        legal_name=clean(legal_name),
+        address_line1=clean(address_line1),
+        address_line2=clean(address_line2),
+        postal_code=clean(postal_code),
+        city=clean(city),
+        country=clean(country),
+        phone=clean(phone),
+        email=clean(email),
+        website=clean(website),
+        siret=clean(siret),
+        vat_number=clean(vat_number),
+    )
+
+    return RedirectResponse(url="/server/company-branding", status_code=303)
+
+
+@app.post("/server/company-branding/logo", response_class=HTMLResponse)
+async def server_company_branding_logo_upload(request: Request, logo: UploadFile = File(...)):
     login_response = require_login(request)
     if login_response:
         return login_response
