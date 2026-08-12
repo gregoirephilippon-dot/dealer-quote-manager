@@ -225,3 +225,92 @@ Avant remplacement, il sauvegarde automatiquement la base actuelle avec un nom :
 avant_restauration_YYYYMMDD-HHMMSS.sqlite
 
 Ne pas utiliser pendant que le serveur est lance.
+
+## PC serveur de test
+
+Cette procédure permet de lancer Dealer Quote Manager sur un PC dédié du réseau local, pour tester l'accès multi-utilisateur depuis d'autres postes.
+
+### 1. Récupérer le projet
+
+Sur le PC serveur :
+
+    cd C:\Users\afric
+    git clone https://github.com/gregoirephilippon-dot/dealer-quote-manager.git
+    cd dealer-quote-manager
+    git checkout serveur-v1
+
+Si le projet est déjà présent :
+
+    cd C:\Users\afric\dealer-quote-manager
+    git pull
+
+### 2. Initialiser la base de test
+
+    python backend\app\setup_server_test.py
+
+Ce script prépare une installation serveur de test :
+
+- initialise la base ;
+- crée les tables utilisateurs, sociétés et accès société ;
+- crée une société de test ;
+- crée un compte administrateur de test ;
+- ajoute quotes.company_id si la colonne est absente ;
+- rattache les devis existants à la société de test si nécessaire.
+
+Compte de test créé :
+
+    Email    : admin@test.local
+    Mot passe: admin1234
+
+### 3. Lancer le serveur stable
+
+    .\start_server_stable.bat
+
+Ce script lance le serveur sans mode --reload, vérifie les dépendances, initialise la base de test et refuse de démarrer si le port 8001 est déjà utilisé.
+
+### 4. Accès depuis un autre PC du réseau
+
+Depuis un autre poste du même réseau local :
+
+    http://ADRESSE_IPV4_DU_PC_SERVEUR:8001
+
+Exemple :
+
+    http://192.168.86.26:8001
+
+### 5. Arrêter le serveur
+
+Dans la fenêtre du serveur :
+
+    CTRL + C
+
+### 6. Si le port 8001 est déjà utilisé
+
+Vérifier le processus :
+
+    netstat -ano | findstr :8001
+
+Arrêter le processus concerné :
+
+    taskkill /PID PID_ICI /T /F
+
+Sur un PC de test uniquement, il est aussi possible d'arrêter tous les processus Python :
+
+    taskkill /IM python.exe /T /F
+
+### 7. Cycle de mise à jour
+
+Développement sur le PC principal :
+
+    git add .
+    git commit -m "Message"
+    git push
+
+Mise à jour sur le PC serveur :
+
+    cd C:\Users\afric\dealer-quote-manager
+    git pull
+    .\start_server_stable.bat
+
+Le PC serveur sert uniquement à faire tourner l'application et tester les accès. Le développement continue sur le PC principal.
+
