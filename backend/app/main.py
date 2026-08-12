@@ -1088,8 +1088,12 @@ def home(request: Request):
 
         pdf_path = EXPORT_DIR / f"quote_{quote_id}.pdf"
         html_path = EXPORT_DIR / f"quote_{quote_id}.html"
-        pdf_link = f'<a class="button gold" href="/exports/quote_{quote_id}.pdf" target="_blank">PDF</a>' if pdf_path.exists() else ""
-        html_link = f'<a class="button secondary" href="/exports/quote_{quote_id}.html" target="_blank">HTML</a>' if html_path.exists() else ""
+        dealer_pdf_path = EXPORT_DIR / f"quote_{quote_id}_dealer.pdf"
+        dealer_html_path = EXPORT_DIR / f"quote_{quote_id}_dealer.html"
+        pdf_link = f'<a class="button gold" href="/exports/quote_{quote_id}.pdf" target="_blank">PDF client</a>' if pdf_path.exists() else ""
+        html_link = f'<a class="button secondary" href="/exports/quote_{quote_id}.html" target="_blank">HTML client</a>' if html_path.exists() else ""
+        dealer_pdf_link = f'<a class="button danger" href="/exports/quote_{quote_id}_dealer.pdf" target="_blank">PDF dealer</a>' if dealer_pdf_path.exists() else ""
+        dealer_html_link = f'<a class="button secondary" href="/exports/quote_{quote_id}_dealer.html" target="_blank">HTML dealer</a>' if dealer_html_path.exists() else ""
 
         rows_html += f"""
         <tr>
@@ -1106,8 +1110,8 @@ def home(request: Request):
             <td class="actions">
                 <a class="button green" href="/quote/{quote_id}/inputs">Données contrat / moteur</a>
                 <a class="button" href="/quote/{quote_id}/services">Construction de l’offre</a>
-                <a class="button secondary" href="/quote/{quote_id}/export">Générer offre client</a>
-                {html_link}{pdf_link}
+                <a class="button secondary" href="/quote/{quote_id}/export">Générer exports</a>
+                {html_link}{pdf_link}{dealer_html_link}{dealer_pdf_link}
             </td>
         </tr>"""
 
@@ -1310,6 +1314,8 @@ def import_file(request: Request, file: UploadFile = File(...)):
         run_command([sys.executable, "backend/app/apply_pricing.py", str(quote_id)])
         run_command([sys.executable, "backend/app/export_quote_html.py", str(quote_id)])
         run_command([sys.executable, "backend/app/export_quote_pdf.py", str(quote_id)])
+        run_command([sys.executable, "backend/app/export_quote_dealer_html.py", str(quote_id)])
+        run_command([sys.executable, "backend/app/export_quote_dealer_pdf.py", str(quote_id)])
 
         return RedirectResponse(url=f"/quote/{quote_id}/inputs", status_code=303)
 
@@ -1558,6 +1564,8 @@ def regenerate_quote(quote_id):
     run_command([sys.executable, "backend/app/apply_pricing.py", str(quote_id)])
     run_command([sys.executable, "backend/app/export_quote_html.py", str(quote_id)])
     run_command([sys.executable, "backend/app/export_quote_pdf.py", str(quote_id)])
+    run_command([sys.executable, "backend/app/export_quote_dealer_html.py", str(quote_id)])
+    run_command([sys.executable, "backend/app/export_quote_dealer_pdf.py", str(quote_id)])
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
@@ -1648,7 +1656,7 @@ def export_quote(quote_id: int, request: Request):
 def get_export(filename: str, request: Request):
     import re
 
-    match = re.match(r"^quote_(\d+)\.(pdf|html)$", filename or "")
+    match = re.match(r"^quote_(\d+)(?:_dealer)?\.(pdf|html)$", filename or "")
     if match:
         quote_id = int(match.group(1))
         with get_connection() as conn:
