@@ -189,3 +189,21 @@ check_project.bat
 Ou lancer depuis PowerShell :
 
 .\check_project.bat
+
+### Lancer le serveur sur le reseau local
+
+Double-cliquer sur :
+
+start_server_lan.bat
+
+Ce mode permet d'acceder a l'application depuis un autre PC du meme reseau.
+
+Le script affiche l'adresse IPv4 du PC serveur.
+
+Exemple :
+
+http://192.168.86.22:8001
+
+Le mode local simple reste :
+
+start_server.bat
