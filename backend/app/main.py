@@ -1588,6 +1588,21 @@ def export_quote(quote_id: int, request: Request):
 
 @app.get("/exports/{filename}")
 def get_export(filename: str, request: Request):
+    import re
+
+    match = re.match(r"^quote_(\d+)\.(pdf|html)$", filename or "")
+    if match:
+        quote_id = int(match.group(1))
+        with get_connection() as conn:
+            quote = get_quote_for_active_company_request(conn, quote_id, request)
+            if quote is None:
+                return quote_access_denied_response(quote_id)
+    else:
+        return HTMLResponse(
+            layout("Accès refusé", "<div class='error'>Fichier export non autorisé.</div>"),
+            status_code=403,
+        )
+
     path = EXPORT_DIR / filename
     if not path.exists():
         return HTMLResponse(layout("Introuvable", f"<div class='error'>Fichier introuvable : {filename}</div>"), status_code=404)
