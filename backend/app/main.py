@@ -38,9 +38,6 @@ JSON_DIR = DATA_DIR / "examples"
 
 app = FastAPI(title="Dealer Quote Manager")
 
-config.ensure_directories()
-app.mount("/logos", StaticFiles(directory=config.LOGO_DIR), name="logos")
-
 
 @app.exception_handler(Exception)
 async def clean_global_error_handler(request: Request, exc: Exception):
@@ -599,6 +596,9 @@ def health_check():
     from pathlib import Path
     import sqlite3
     import app_config as config
+
+config.ensure_directories()
+app.mount("/logos", StaticFiles(directory=config.LOGO_DIR), name="logos")
 
     config.ensure_storage_dirs()
 
