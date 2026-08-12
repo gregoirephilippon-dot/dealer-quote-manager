@@ -3009,13 +3009,15 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
         import session_security
         email = session_security.verify_session_token(token)
 
-    is_admin = False
+    roles = []
     if email:
         import server_user_model as identity
-        is_admin = identity.user_has_any_role(email, ["OWNER", "SUPER_ADMIN"])
+        context = identity.get_active_company_context(email)
+        if context and context.get("role"):
+            roles.append(str(context.get("role")).upper())
 
-    if is_admin:
-        return response
+    is_owner_or_super_admin = any(role in ("OWNER", "SUPER_ADMIN") for role in roles)
+    is_global_settings_admin = any(role in ("OWNER", "SUPER_ADMIN", "COMPANY_ADMIN") for role in roles)
 
     body = b""
     async for chunk in response.body_iterator:
@@ -3023,12 +3025,23 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
 
     html = body.decode("utf-8", errors="replace")
 
-    admin_links = [
+    owner_only_links = [
         '        <a href="/server/users">Utilisateurs</a>\n',
     ]
 
-    for link in admin_links:
-        html = html.replace(link, "")
+    global_settings_links = [
+        '        <a href="/settings">Paramètres dealer</a>\n',
+        '        <a href="/dealer-discounts">Remise dealer</a>\n',
+        '        <a href="/price-catalog">Import price list</a>\n',
+    ]
+
+    if not is_owner_or_super_admin:
+        for link in owner_only_links:
+            html = html.replace(link, "")
+
+    if not is_global_settings_admin:
+        for link in global_settings_links:
+            html = html.replace(link, "")
 
     from fastapi.responses import HTMLResponse
 
@@ -3041,7 +3054,6 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
         status_code=response.status_code,
         headers=clean_headers,
     )
-
 
 @app.get("/server/context")
 def server_context_page(request: Request):
