@@ -1513,9 +1513,9 @@ async def save_quote_services(quote_id: int, request: Request):
                 """
                 UPDATE quote_services
                 SET included=?, work_time_hours=?, quantity=?, unit_price=?, fixed_price=?, extra_travel=?
-                WHERE id=?
+                WHERE id=? AND quote_id=?
                 """,
-                (included, work_time, qty, unit, fixed, travel, row_id),
+                (included, work_time, qty, unit, fixed, travel, row_id, quote_id),
             )
 
         conn.commit()
