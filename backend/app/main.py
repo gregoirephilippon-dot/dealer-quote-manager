@@ -3274,3 +3274,71 @@ async def guard_quote_company_access(request: Request, call_next):
 
     return await call_next(request)
 
+
+def admin_required_page():
+    from fastapi.responses import HTMLResponse
+
+    return HTMLResponse(
+        """
+        <html>
+        <head>
+            <title>Accès admin requis</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background: #f3f4f6;
+                    padding: 40px;
+                }
+                .card {
+                    max-width: 620px;
+                    margin: 80px auto;
+                    background: white;
+                    padding: 28px;
+                    border-radius: 14px;
+                    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+                }
+                h1 {
+                    margin-top: 0;
+                    color: #991b1b;
+                }
+                a {
+                    display: inline-block;
+                    margin-top: 18px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>Accès admin requis</h1>
+                <p>Cette page modifie des réglages globaux du serveur.</p>
+                <p>Elle est réservée aux administrateurs.</p>
+                <a href="/">Retour accueil</a>
+            </div>
+        </body>
+        </html>
+        """,
+        status_code=403,
+    )
+
+
+@app.middleware("http")
+async def require_admin_for_global_settings_routes(request: Request, call_next):
+    admin_prefixes = (
+        "/settings",
+        "/dealer-discounts",
+        "/price-catalog",
+    )
+
+    path = request.url.path
+
+    if path.startswith(admin_prefixes):
+        context = get_request_company_context(request)
+        if not context:
+            return company_context_required_page()
+
+        role = str(context.get("role") or "").upper()
+        if role not in ("OWNER", "SUPER_ADMIN", "COMPANY_ADMIN"):
+            return admin_required_page()
+
+    return await call_next(request)
+
