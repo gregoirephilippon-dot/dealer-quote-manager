@@ -599,6 +599,59 @@ def set_user_status(user_id: int, status: str):
         conn.commit()
 
 
+
+def update_company_basic(company_id: int, name: str, slug: str, status: str):
+    import datetime
+
+    name = (name or "").strip()
+    slug = (slug or "").strip().lower()
+    status = (status or "").strip().lower()
+
+    if not name:
+        raise ValueError("Le nom de la société est obligatoire")
+
+    if not slug:
+        raise ValueError("Le slug est obligatoire")
+
+    if status not in {"active", "inactive"}:
+        raise ValueError(f"Statut société invalide : {status}")
+
+    init_server_identity_tables()
+
+    now = datetime.datetime.utcnow().isoformat()
+
+    with get_connection() as conn:
+        existing = conn.execute(
+            "SELECT id FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+
+        if existing is None:
+            raise ValueError(f"Société introuvable : {company_id}")
+
+        duplicate = conn.execute(
+            """
+            SELECT id FROM companies
+            WHERE slug = ?
+              AND id != ?
+            """,
+            (slug, company_id),
+        ).fetchone()
+
+        if duplicate is not None:
+            raise ValueError(f"Slug déjà utilisé : {slug}")
+
+        conn.execute(
+            """
+            UPDATE companies
+            SET name = ?, slug = ?, status = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (name, slug, status, now, company_id),
+        )
+        conn.commit()
+
+
 def set_company_status(company_id: int, status: str):
     import datetime
 
