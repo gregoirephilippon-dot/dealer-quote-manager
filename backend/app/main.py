@@ -436,6 +436,7 @@ def layout(title, content):
         <a href="/dealer-discounts">Codes remises</a>
         <a href="/price-catalog">Catalogue pièces</a>
         <a href="/server/company-switch">Changer société</a>
+        <a href="/server/companies">Sociétés</a>
         <a href="/server/company-branding">Identité société</a>
         <a href="/login">Connexion</a>
         <a href="/logout">Déconnexion</a>
@@ -2920,6 +2921,179 @@ def require_dealer_export_access(request: Request):
     return None
 
 
+
+def _company_slug_from_name(name: str) -> str:
+    import re
+    import unicodedata
+
+    value = unicodedata.normalize("NFKD", name or "")
+    value = value.encode("ascii", "ignore").decode("ascii")
+    value = re.sub(r"[^a-zA-Z0-9]+", "-", value.lower()).strip("-")
+    return value or "societe"
+
+
+@app.get("/server/companies", response_class=HTMLResponse)
+def server_companies_page(request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import html
+    import server_user_model as identity
+
+    identity.init_server_identity_tables()
+    companies = identity.list_companies()
+
+    rows = ""
+    for company in companies:
+        company_id = html.escape(str(company["id"]))
+        name = html.escape(str(company["name"] or ""))
+        slug = html.escape(str(company["slug"] or ""))
+        status = html.escape(str(company["status"] or ""))
+
+        rows += f"""
+        <tr>
+            <td>{company_id}</td>
+            <td><strong>{name}</strong></td>
+            <td>{slug}</td>
+            <td>{status}</td>
+        </tr>
+        """
+
+    if not rows:
+        rows = """
+        <tr>
+            <td colspan="4"><em>Aucune société créée.</em></td>
+        </tr>
+        """
+
+    content = f"""
+    <h2>Gestion des sociétés</h2>
+
+    <div class="card">
+        <p>
+            Cette page permet de créer les entreprises disponibles dans le logiciel.
+            Les utilisateurs pourront ensuite être rattachés à ces sociétés depuis la page utilisateurs.
+        </p>
+        <p>
+            Administration réservée aux rôles <strong>OWNER</strong> et <strong>SUPER_ADMIN</strong>.
+        </p>
+        <p>
+            <a class="button" href="/server/companies/new">Créer une société</a>
+            <a class="button secondary" href="/server/users">Gérer les utilisateurs</a>
+        </p>
+    </div>
+
+    <div class="card">
+        <h3>Sociétés existantes</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nom</th>
+                    <th>Slug</th>
+                    <th>Statut</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+    </div>
+    """
+
+    return layout("Gestion des sociétés", content)
+
+
+@app.get("/server/companies/new", response_class=HTMLResponse)
+def server_company_new_page(request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    content = """
+    <h2>Créer une société</h2>
+
+    <div class="card">
+        <p>
+            Crée une nouvelle entreprise dans Dealer Quote Manager.
+            Le slug peut être généré automatiquement si tu le laisses vide.
+        </p>
+    </div>
+
+    <form method="post" action="/server/companies/new" class="card">
+        <label>Nom de la société
+            <input type="text" name="company_name" placeholder="Ex : Volvo Penta Atlantique" required>
+        </label>
+
+        <label>Slug technique optionnel
+            <input type="text" name="company_slug" placeholder="Ex : volvo-penta-atlantique">
+        </label>
+
+        <button type="submit">Créer la société</button>
+        <a class="button secondary" href="/server/companies">Retour</a>
+    </form>
+    """
+
+    return layout("Créer une société", content)
+
+
+@app.post("/server/companies/new", response_class=HTMLResponse)
+def server_company_create_page(
+    request: Request,
+    company_name: str = Form(...),
+    company_slug: str = Form(""),
+):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import html
+    import server_user_model as identity
+
+    identity.init_server_identity_tables()
+
+    name = (company_name or "").strip()
+    slug = (company_slug or "").strip().lower()
+
+    if not name:
+        return HTMLResponse(
+            layout(
+                "Erreur création société",
+                """
+                <h2>Créer une société</h2>
+                <div class="error">Le nom de la société est obligatoire.</div>
+                <p><a class="button secondary" href="/server/companies/new">Retour</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    if not slug:
+        slug = _company_slug_from_name(name)
+    else:
+        slug = _company_slug_from_name(slug)
+
+    try:
+        identity.create_company(name, slug)
+    except Exception as exc:
+        safe_error = html.escape(str(exc))
+        return HTMLResponse(
+            layout(
+                "Erreur création société",
+                f"""
+                <h2>Créer une société</h2>
+                <div class="error">Impossible de créer la société : {safe_error}</div>
+                <p><a class="button secondary" href="/server/companies/new">Retour</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/companies", status_code=303)
+
+
+
 def require_owner_or_super_admin(request: Request):
     return require_roles(request, ["OWNER", "SUPER_ADMIN"])
 
@@ -3782,6 +3956,8 @@ async def require_owner_for_server_identity_routes(request: Request, call_next):
     protected_paths = (
         "/server/identity",
         "/server/identity/new",
+        "/server/companies",
+        "/server/companies/new",
     )
 
     if path in protected_paths:
