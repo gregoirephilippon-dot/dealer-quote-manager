@@ -9,6 +9,35 @@ def apply_margin(amount, percent):
     return amount * (1 + percent / 100)
 
 
+
+def get_contract_year_count(total_hours, hours_per_year):
+    try:
+        total_hours = float(total_hours or 0)
+        hours_per_year = float(hours_per_year or 0)
+    except Exception:
+        return 1
+
+    if total_hours <= 0 or hours_per_year <= 0:
+        return 1
+
+    years = round(total_hours / hours_per_year)
+
+    if years < 1:
+        years = 1
+
+    if years > 10:
+        years = 10
+
+    return int(years)
+
+
+def get_setting_float(settings, key, default=0):
+    try:
+        return float(settings.get(key, default) or 0)
+    except Exception:
+        return default
+
+
 def calculate_service_price(service, labour_rate, travel_fee):
     work_time = service["work_time_hours"] or 0
     quantity = service["quantity"] or 0
@@ -65,7 +94,7 @@ def apply_pricing(quote_id: int):
         admin_fee = settings.get("admin_fee_percent", 0)
         logistics_fee = settings.get("logistics_fee_percent", 0)
         travel_fee_fixed = settings.get("travel_fee_fixed", 0)
-        indexation = settings.get("indexation_percent", 0)
+        contract_years = get_contract_year_count(total_hours, hours_per_year)
 
         selling_parts = apply_margin(total_parts, parts_margin)
         selling_labour = apply_margin(total_labour, labour_margin)
@@ -96,15 +125,29 @@ def apply_pricing(quote_id: int):
                 (service_price, service["id"]),
             )
 
-        subtotal = selling_parts + selling_labour + selling_misc + additional_services_total
+        # Répartition annuelle pour appliquer les indexations année par année.
+        annual_parts_base = selling_parts / contract_years if contract_years else selling_parts
+        annual_labour_base = selling_labour / contract_years if contract_years else selling_labour
+        annual_misc_base = selling_misc / contract_years if contract_years else selling_misc
+        annual_services_base = additional_services_total / contract_years if contract_years else additional_services_total
 
-        logistics_amount = subtotal * logistics_fee / 100
-        admin_amount = subtotal * admin_fee / 100
+        selling_total = 0
 
-        selling_total = subtotal + logistics_amount + admin_amount
+        for year_number in range(1, contract_years + 1):
+            parts_indexation = get_setting_float(settings, f"indexation_parts_year_{year_number}", 0)
+            labour_indexation = get_setting_float(settings, f"indexation_labour_year_{year_number}", 0)
 
-        if indexation:
-            selling_total = selling_total * (1 + indexation / 100)
+            yearly_parts = annual_parts_base * (1 + parts_indexation / 100)
+            yearly_labour = annual_labour_base * (1 + labour_indexation / 100)
+            yearly_misc = annual_misc_base
+            yearly_services = annual_services_base
+
+            yearly_subtotal = yearly_parts + yearly_labour + yearly_misc + yearly_services
+
+            logistics_amount = yearly_subtotal * logistics_fee / 100
+            admin_amount = yearly_subtotal * admin_fee / 100
+
+            selling_total += yearly_subtotal + logistics_amount + admin_amount
 
         selling_per_hour = None
         if total_hours:
@@ -143,7 +186,8 @@ def apply_pricing(quote_id: int):
     print(f"Frais deplacement fixes : {travel_fee_fixed:.2f} {currency}")
     print(f"Frais logistique : {logistics_fee}%")
     print(f"Frais admin : {admin_fee}%")
-    print(f"Indexation : {indexation}%")
+    print(f"Durée contrat calculée : {contract_years} an(s)")
+    print("Indexations annuelles appliquées depuis Paramètres calcul")
     print(f"Prix client total : {selling_total:.2f} {currency}")
 
     if selling_monthly is not None:

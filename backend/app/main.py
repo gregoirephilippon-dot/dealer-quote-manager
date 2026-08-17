@@ -2080,6 +2080,7 @@ def regenerate_quote(quote_id):
     run_command([sys.executable, "backend/app/export_quote_dealer_pdf.py", str(quote_id)])
 
 
+
 def ensure_yearly_indexation_settings(max_years: int = 10):
     for year_number in range(1, max_years + 1):
         default_value = 0
@@ -2213,6 +2214,8 @@ async def save_settings(
     set_setting("admin_fee_percent", admin_fee_percent)
     set_setting("logistics_fee_percent", logistics_fee_percent)
     set_setting("travel_fee_fixed", travel_fee_fixed)
+    request_form = await request.form()
+
     for year_number in range(1, 11):
         parts_raw = request_form.get(f"indexation_parts_year_{year_number}") or 0
         labour_raw = request_form.get(f"indexation_labour_year_{year_number}") or 0

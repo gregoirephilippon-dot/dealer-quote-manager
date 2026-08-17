@@ -24,9 +24,85 @@ DEFAULT_SETTINGS = {
         "value": 0,
         "description": "Frais de deplacement fixes",
     },
-    "indexation_percent": {
+    "indexation_parts_year_1": {
         "value": 0,
-        "description": "Indexation annuelle en pourcentage",
+        "description": "Indexation pieces annee 1 en pourcentage",
+    },
+    "indexation_labour_year_1": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 1 en pourcentage",
+    },
+    "indexation_parts_year_2": {
+        "value": 0,
+        "description": "Indexation pieces annee 2 en pourcentage",
+    },
+    "indexation_labour_year_2": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 2 en pourcentage",
+    },
+    "indexation_parts_year_3": {
+        "value": 0,
+        "description": "Indexation pieces annee 3 en pourcentage",
+    },
+    "indexation_labour_year_3": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 3 en pourcentage",
+    },
+    "indexation_parts_year_4": {
+        "value": 0,
+        "description": "Indexation pieces annee 4 en pourcentage",
+    },
+    "indexation_labour_year_4": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 4 en pourcentage",
+    },
+    "indexation_parts_year_5": {
+        "value": 0,
+        "description": "Indexation pieces annee 5 en pourcentage",
+    },
+    "indexation_labour_year_5": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 5 en pourcentage",
+    },
+    "indexation_parts_year_6": {
+        "value": 0,
+        "description": "Indexation pieces annee 6 en pourcentage",
+    },
+    "indexation_labour_year_6": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 6 en pourcentage",
+    },
+    "indexation_parts_year_7": {
+        "value": 0,
+        "description": "Indexation pieces annee 7 en pourcentage",
+    },
+    "indexation_labour_year_7": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 7 en pourcentage",
+    },
+    "indexation_parts_year_8": {
+        "value": 0,
+        "description": "Indexation pieces annee 8 en pourcentage",
+    },
+    "indexation_labour_year_8": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 8 en pourcentage",
+    },
+    "indexation_parts_year_9": {
+        "value": 0,
+        "description": "Indexation pieces annee 9 en pourcentage",
+    },
+    "indexation_labour_year_9": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 9 en pourcentage",
+    },
+    "indexation_parts_year_10": {
+        "value": 0,
+        "description": "Indexation pieces annee 10 en pourcentage",
+    },
+    "indexation_labour_year_10": {
+        "value": 0,
+        "description": "Indexation main d'oeuvre annee 10 en pourcentage",
     },
 }
 
