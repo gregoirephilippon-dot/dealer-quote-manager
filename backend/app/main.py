@@ -3580,6 +3580,8 @@ async def server_users_create_user(request: Request):
     full_name = str(form.get("full_name") or "").strip()
     temporary_password = str(form.get("temporary_password") or "").strip()
     status = str(form.get("status") or "inactive").strip()
+    company_id = int(form.get("company_id") or 0)
+    role = str(form.get("role") or "TESTER").strip()
 
     try:
         identity.create_user_with_temporary_password(
@@ -3588,6 +3590,21 @@ async def server_users_create_user(request: Request):
             temporary_password=temporary_password,
             status=status,
         )
+
+        if company_id > 0:
+            created_user = identity.get_user_by_email(email)
+            if created_user is None:
+                raise ValueError("Utilisateur créé mais introuvable pour rattachement société")
+
+            if role not in ["OWNER", "SUPER_ADMIN", "COMPANY_ADMIN", "CONTRACT_MANAGER", "TESTER"]:
+                raise ValueError("Rôle invalide")
+
+            identity.grant_company_access(
+                company_id,
+                int(created_user["id"]),
+                role,
+            )
+
     except Exception as exc:
         return HTMLResponse(
             layout(
@@ -3790,7 +3807,24 @@ def server_users_settings_page(request: Request):
                 </select>
             </label>
 
-            <button type="submit">Créer l’utilisateur</button>
+            <label>Société à rattacher
+                <select name="company_id">
+                    <option value="0">Aucune pour le moment</option>
+                    {company_options}
+                </select>
+            </label>
+
+            <label>Rôle dans cette société
+                <select name="role">
+                    <option value="TESTER">TESTER</option>
+                    <option value="CONTRACT_MANAGER">CONTRACT_MANAGER</option>
+                    <option value="COMPANY_ADMIN">COMPANY_ADMIN</option>
+                    <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                    <option value="OWNER">OWNER</option>
+                </select>
+            </label>
+
+            <button type="submit">Créer l’utilisateur et l’accès</button>
         </form>
     </div>
 
