@@ -1863,6 +1863,7 @@ def archives_page(request: Request):
 
 
 
+
 @app.get("/quote/{quote_id}/inputs", response_class=HTMLResponse)
 def quote_inputs_page(quote_id: int, request: Request):
     login_response = require_login(request)
@@ -2078,6 +2079,72 @@ def regenerate_quote(quote_id):
     run_command([sys.executable, "backend/app/export_quote_dealer_html.py", str(quote_id)])
     run_command([sys.executable, "backend/app/export_quote_dealer_pdf.py", str(quote_id)])
 
+
+def ensure_yearly_indexation_settings(max_years: int = 10):
+    for year_number in range(1, max_years + 1):
+        default_value = 0
+        existing = get_settings_dict()
+
+        parts_key = f"indexation_parts_year_{year_number}"
+        labour_key = f"indexation_labour_year_{year_number}"
+
+        if parts_key not in existing:
+            set_setting(parts_key, default_value)
+
+        if labour_key not in existing:
+            set_setting(labour_key, default_value)
+
+
+def build_yearly_indexation_settings_html(settings: dict, max_years: int = 10) -> str:
+    rows = ""
+
+    for year_number in range(1, max_years + 1):
+        parts_key = f"indexation_parts_year_{year_number}"
+        labour_key = f"indexation_labour_year_{year_number}"
+
+        parts_value = settings.get(parts_key, 0)
+        labour_value = settings.get(labour_key, 0)
+
+        note = ""
+        if year_number == 1:
+            note = "<div class='small'>Année de départ : généralement 0 %.</div>"
+
+        rows += f"""
+        <tr>
+            <td><strong>Année {year_number}</strong>{note}</td>
+            <td>
+                <input type="number" step="0.01" name="{parts_key}" value="{fmt_number(parts_value)}">
+            </td>
+            <td>
+                <input type="number" step="0.01" name="{labour_key}" value="{fmt_number(labour_value)}">
+            </td>
+        </tr>
+        """
+
+    return f"""
+    <h3>Indexations annuelles</h3>
+    <div class="card">
+        <p>
+            Ces valeurs remplacent l’ancienne indexation annuelle unique.
+            Chaque contrat utilisera uniquement les années correspondant à sa durée calculée.
+        </p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Année</th>
+                    <th>Indexation pièces (%)</th>
+                    <th>Indexation main-d’œuvre (%)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+    </div>
+    """
+
+
+
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request):
     login_response = require_login(request)
@@ -2085,14 +2152,15 @@ def settings_page(request: Request):
         return login_response
 
     ensure_default_settings()
+    ensure_yearly_indexation_settings()
     settings = get_settings_dict()
+    yearly_indexation_html = build_yearly_indexation_settings_html(settings)
     fields = [
         ("parts_margin_percent", "Marge pièces (%)", "Marge appliquée sur les pièces du contrat."),
         ("labour_margin_percent", "Marge main-d’œuvre (%)", "Marge appliquée sur la main-d’œuvre."),
         ("admin_fee_percent", "Frais administratifs (%)", "Frais de gestion, facturation et mise en place du contrat."),
         ("logistics_fee_percent", "Frais logistiques (%)", "Frais liés à l’expédition, préparation ou gestion des pièces."),
         ("travel_fee_fixed", "Frais déplacement fixes", "Montant fixe ajouté pour le déplacement si utilisé dans le calcul."),
-        ("indexation_percent", "Indexation annuelle (%)", "Pourcentage d’indexation prévu pour le contrat."),
     ]
 
     inputs = ""
@@ -2122,6 +2190,8 @@ def settings_page(request: Request):
 
     <form action="/settings" method="post">
         {inputs}
+        {yearly_indexation_html}
+
         <button type="submit">Enregistrer les paramètres de calcul</button>
         <a class="button secondary" href="/">Retour offres contrats</a>
     </form>
@@ -2129,14 +2199,13 @@ def settings_page(request: Request):
     return layout("Paramètres de calcul dealer", content)
 
 @app.post("/settings")
-def save_settings(
+async def save_settings(
     request: Request,
     parts_margin_percent: float = Form(...),
     labour_margin_percent: float = Form(...),
     admin_fee_percent: float = Form(...),
     logistics_fee_percent: float = Form(...),
     travel_fee_fixed: float = Form(...),
-    indexation_percent: float = Form(...),
 ):
     ensure_default_settings()
     set_setting("parts_margin_percent", parts_margin_percent)
@@ -2144,7 +2213,23 @@ def save_settings(
     set_setting("admin_fee_percent", admin_fee_percent)
     set_setting("logistics_fee_percent", logistics_fee_percent)
     set_setting("travel_fee_fixed", travel_fee_fixed)
-    set_setting("indexation_percent", indexation_percent)
+    for year_number in range(1, 11):
+        parts_raw = request_form.get(f"indexation_parts_year_{year_number}") or 0
+        labour_raw = request_form.get(f"indexation_labour_year_{year_number}") or 0
+
+        try:
+            parts_value = float(parts_raw)
+        except Exception:
+            parts_value = 0
+
+        try:
+            labour_value = float(labour_raw)
+        except Exception:
+            labour_value = 0
+
+        set_setting(f"indexation_parts_year_{year_number}", parts_value)
+        set_setting(f"indexation_labour_year_{year_number}", labour_value)
+
     return RedirectResponse(url="/settings", status_code=303)
 
 @app.get("/quote/{quote_id}/export")
