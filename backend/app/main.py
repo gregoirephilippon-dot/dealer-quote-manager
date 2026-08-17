@@ -1377,6 +1377,8 @@ def home(request: Request):
                 <a class="button green" href="/quote/{quote_id}/inputs">Données contrat / moteur</a>
                 <a class="button" href="/quote/{quote_id}/services">Construction de l’offre</a>
                 <a class="button secondary" href="/quote/{quote_id}/export">Générer exports</a>
+                {f'<a class="button danger" href="/quote/{quote_id}/archive/confirm">Archiver</a>' if str(row['status']) in ['draft', 'sent', 'refused'] else ''}
+                {f'<a class="button secondary" href="/quote/{quote_id}/restore">Restaurer</a>' if str(row['status']) == 'archived' else ''}
                 {html_link}{pdf_link}{dealer_html_link}{dealer_pdf_link}
             </td>
         </tr>"""
@@ -1619,6 +1621,154 @@ def quote_access_denied_response(quote_id: int):
     )
 
 
+
+
+def get_quote_for_current_company(request: Request, quote_id: int):
+    context = get_request_company_context(request)
+    company_id = int(context["company_id"])
+
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT * FROM quotes WHERE id = ? AND company_id = ?",
+            (quote_id, company_id),
+        ).fetchone()
+
+
+@app.get("/quote/{quote_id}/archive/confirm", response_class=HTMLResponse)
+def quote_archive_confirm_page(quote_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    quote = get_quote_for_current_company(request, quote_id)
+    if not quote:
+        return HTMLResponse(
+            layout(
+                "Cotation introuvable",
+                """
+                <h2>Archiver cotation</h2>
+                <div class="error">Cotation introuvable ou non accessible pour cette société.</div>
+                <p><a class="button secondary" href="/">Retour</a></p>
+                """
+            ),
+            status_code=404,
+        )
+
+    status = str(quote["status"] or "")
+    if status == "accepted":
+        return HTMLResponse(
+            layout(
+                "Archivage refusé",
+                """
+                <h2>Archivage refusé</h2>
+                <div class="error">
+                    Une cotation acceptée ne peut pas être archivée depuis cette action.
+                </div>
+                <p><a class="button secondary" href="/">Retour offres contrats</a></p>
+                """
+            ),
+            status_code=403,
+        )
+
+    if status == "archived":
+        return RedirectResponse(url="/", status_code=303)
+
+    customer = quote["customer_name"] or "-"
+    engine = quote["engine_serial_number"] or "-"
+    product = quote["product_designation"] or quote["product_name"] or "-"
+
+    content = f"""
+    <h2>Confirmer l’archivage</h2>
+
+    <div class="warning">
+        <p><strong>Attention :</strong> la cotation ne sera pas supprimée.</p>
+        <p>Elle sera seulement passée au statut <strong>archived</strong> pour conserver l’historique.</p>
+    </div>
+
+    <div class="card">
+        <p><strong>Cotation :</strong> #{quote_id}</p>
+        <p><strong>Client :</strong> {customer}</p>
+        <p><strong>Moteur / produit :</strong> {product}</p>
+        <p><strong>N° série :</strong> {engine}</p>
+        <p><strong>Statut actuel :</strong> {status}</p>
+    </div>
+
+    <form method="post" action="/quote/{quote_id}/archive" class="card">
+        <button type="submit" class="danger">Confirmer l’archivage</button>
+        <a class="button secondary" href="/">Annuler</a>
+    </form>
+    """
+
+    return layout("Archiver cotation", content)
+
+
+@app.post("/quote/{quote_id}/archive", response_class=HTMLResponse)
+def quote_archive_submit(quote_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    quote = get_quote_for_current_company(request, quote_id)
+    if not quote:
+        return HTMLResponse(
+            layout(
+                "Cotation introuvable",
+                """
+                <h2>Archiver cotation</h2>
+                <div class="error">Cotation introuvable ou non accessible pour cette société.</div>
+                <p><a class="button secondary" href="/">Retour</a></p>
+                """
+            ),
+            status_code=404,
+        )
+
+    status = str(quote["status"] or "")
+    if status == "accepted":
+        return HTMLResponse(
+            layout(
+                "Archivage refusé",
+                """
+                <h2>Archivage refusé</h2>
+                <div class="error">Une cotation acceptée ne peut pas être archivée.</div>
+                <p><a class="button secondary" href="/">Retour offres contrats</a></p>
+                """
+            ),
+            status_code=403,
+        )
+
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE quotes SET status = ? WHERE id = ?",
+            ("archived", quote_id),
+        )
+        conn.commit()
+
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/quote/{quote_id}/restore")
+def quote_restore(quote_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    quote = get_quote_for_current_company(request, quote_id)
+    if not quote:
+        return RedirectResponse(url="/", status_code=303)
+
+    status = str(quote["status"] or "")
+    if status == "archived":
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE quotes SET status = ? WHERE id = ?",
+                ("draft", quote_id),
+            )
+            conn.commit()
+
+    return RedirectResponse(url="/", status_code=303)
+
+
+
 @app.get("/quote/{quote_id}/inputs", response_class=HTMLResponse)
 def quote_inputs_page(quote_id: int, request: Request):
     login_response = require_login(request)
@@ -1653,6 +1803,7 @@ def quote_inputs_page(quote_id: int, request: Request):
                 <option value="sent" {'selected' if quote['status'] == 'sent' else ''}>sent</option>
                 <option value="accepted" {'selected' if quote['status'] == 'accepted' else ''}>accepted</option>
                 <option value="refused" {'selected' if quote['status'] == 'refused' else ''}>refused</option>
+                <option value="archived" {'selected' if quote['status'] == 'archived' else ''}>archived</option>
             </select></label>
         </div>
         <h3>Contrat & coûts importés</h3>
