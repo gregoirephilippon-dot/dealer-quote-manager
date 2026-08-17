@@ -2963,6 +2963,10 @@ def server_companies_page(request: Request):
             <td>{slug}</td>
             <td>{status}</td>
             <td>
+                <form method="post" action="/server/companies/{raw_company_id}/select-branding" style="margin:0 0 8px 0;">
+                    <button type="submit">Modifier identité</button>
+                </form>
+
                 <form method="post" action="/server/companies/{raw_company_id}/status/{next_status}" style="margin:0;">
                     <button type="submit">{button_label}</button>
                 </form>
@@ -3014,6 +3018,54 @@ def server_companies_page(request: Request):
     """
 
     return layout("Gestion des sociétés", content)
+
+
+
+
+@app.post("/server/companies/{company_id}/select-branding")
+def server_company_select_branding(company_id: int, request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import server_user_model as identity
+
+    email = get_logged_user_email(request)
+    if not email:
+        return RedirectResponse(url="/login", status_code=303)
+
+    try:
+        company = identity.get_company_by_id(company_id)
+        if company is None:
+            raise ValueError(f"Société introuvable : {company_id}")
+
+        current_user = identity.get_user_by_email(email)
+        if current_user is None:
+            raise ValueError("Utilisateur introuvable")
+
+        if not identity.user_has_company_access(email, company_id):
+            identity.grant_company_access(
+                company_id,
+                int(current_user["id"]),
+                "SUPER_ADMIN",
+            )
+
+        identity.set_active_company_id_for_user(email, company_id)
+
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Erreur identité société",
+                f"""
+                <h2>Identité société</h2>
+                <div class="error">Impossible d'ouvrir l'identité de cette société : {exc}</div>
+                <p><a class="button secondary" href="/server/companies">Retour sociétés</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/company-branding", status_code=303)
 
 
 
