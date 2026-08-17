@@ -6,24 +6,24 @@ PACKAGE_PRESETS = {
     "basic": {
         "label": "Basic",
         "description": "Commissioning + contrôle visuel initial.",
-        "services": ["1,1", "1,2"],
+        "services": ["1,1", "1,2", "2,1"],
     },
     "base_care": {
         "label": "Base Care",
         "description": "Basic + campagne + maintenance parts & labour.",
-        "services": ["1,1", "1,2", "1,3", "2,2"],
+        "services": ["1,1", "1,2", "1,3", "2,1", "2,2"],
     },
     "comfort_care": {
         "label": "Comfort Care",
         "description": "Base Care + diagnostics + analyses fluides.",
-        "services": ["1,1", "1,2", "1,3", "2,2", "3,1", "3,2", "3,3_1", "3,3_2", "3,3_3"],
+        "services": ["1,1", "1,2", "1,3", "2,1", "2,2", "3,1", "3,2", "3,3_1", "3,3_2", "3,3_3"],
     },
     "advanced_care": {
         "label": "Advanced Care",
         "description": "Comfort Care + monitoring + préventif + extension.",
         "services": [
             "1,1", "1,2", "1,3", "1,4",
-            "2,2", "2,3",
+            "2,1", "2,2", "2,3",
             "3,1", "3,2", "3,3_1", "3,3_2", "3,3_3",
             "4,1", "4,2",
             "6,1",
