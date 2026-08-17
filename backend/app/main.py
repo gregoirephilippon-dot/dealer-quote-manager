@@ -1336,6 +1336,9 @@ def home(request: Request):
 
     rows_html = ""
     for row in rows:
+        if str(row["status"] or "") == "archived":
+            continue
+
         currency = row["currency"] or "EUR"
         quote_id = row["id"]
 
@@ -1766,6 +1769,97 @@ def quote_restore(quote_id: int, request: Request):
             conn.commit()
 
     return RedirectResponse(url="/", status_code=303)
+
+
+
+
+@app.get("/archives", response_class=HTMLResponse)
+def archives_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    context = get_request_company_context(request)
+    company_id = int(context["company_id"])
+    can_view_dealer_exports = user_can_view_dealer_exports(request)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                q.id, q.created_at, q.status, q.customer_name, q.product_designation,
+                q.engine_serial_number, q.product_name, q.country
+            FROM quotes q
+            WHERE q.company_id = ? AND q.status = 'archived'
+            ORDER BY q.created_at DESC
+            """,
+            (company_id,),
+        ).fetchall()
+
+    table_rows = ""
+
+    for row in rows:
+        if str(row["status"] or "") == "archived":
+            continue
+
+        quote_id = row["id"]
+        customer = row["customer_name"] or "-"
+        product = row["product_designation"] or row["product_name"] or "-"
+        serial = row["engine_serial_number"] or "-"
+        country = row["country"] or "-"
+        created_at = row["created_at"] or "-"
+        status = row["status"] or "-"
+
+        table_rows += f"""
+        <tr>
+            <td>{quote_id}</td>
+            <td>{created_at}</td>
+            <td>{status}</td>
+            <td>{customer}</td>
+            <td>{product}</td>
+            <td>{serial}</td>
+            <td>{country}</td>
+            <td>
+                <a class="button secondary" href="/quote/{quote_id}/restore-simple">Restaurer</a>
+                <a class="button green" href="/quote/{quote_id}/inputs">Voir</a>
+            </td>
+        </tr>
+        """
+
+    if not table_rows:
+        table_rows = """
+        <tr>
+            <td colspan="8">Aucune cotation archivée pour cette société.</td>
+        </tr>
+        """
+
+    content = f"""
+    <h2>Archives des cotations</h2>
+
+    <p>
+        <a class="button secondary" href="/">Retour aux offres actives</a>
+    </p>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Créée le</th>
+                <th>Statut</th>
+                <th>Client</th>
+                <th>Produit</th>
+                <th>N° série</th>
+                <th>Pays</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {table_rows}
+        </tbody>
+    </table>
+    """
+
+    return layout("Archives cotations", content)
 
 
 
