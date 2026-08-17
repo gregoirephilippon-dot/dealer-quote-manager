@@ -1213,7 +1213,20 @@ def server_company_switch_page(request: Request):
     import server_user_model as identity
 
     email = get_logged_user_email(request)
-    companies = identity.list_companies_for_user(email)
+
+    if identity.user_has_any_role(email, ["OWNER", "SUPER_ADMIN"]):
+        companies = [
+            {
+                "id": company["id"],
+                "name": company["name"],
+                "role": "SUPER_ADMIN",
+            }
+            for company in identity.list_companies()
+            if str(company["status"] or "") == "active"
+        ]
+    else:
+        companies = identity.list_companies_for_user(email)
+
     active_company_id = get_active_company_id_for_request(request)
     active_company_name = get_active_company_name_for_request(request)
 
@@ -1262,6 +1275,30 @@ def server_company_switch_submit(
     import server_user_model as identity
 
     email = get_logged_user_email(request)
+
+    if identity.user_has_any_role(email, ["OWNER", "SUPER_ADMIN"]):
+        company = identity.get_company_by_id(company_id)
+        if company is None or str(company["status"] or "") != "active":
+            return HTMLResponse(
+                layout(
+                    "Changer société",
+                    """
+                    <h2>Changer société active</h2>
+                    <div class="error">Société introuvable ou inactive.</div>
+                    <p><a class="button secondary" href="/server/company-switch">Retour</a></p>
+                    """
+                ),
+                status_code=400,
+            )
+
+        current_user = identity.get_user_by_email(email)
+        if current_user and not identity.user_has_company_access(email, company_id):
+            identity.grant_company_access(
+                int(company_id),
+                int(current_user["id"]),
+                "SUPER_ADMIN",
+            )
+
     identity.set_active_company_id_for_user(email, company_id)
 
     return RedirectResponse(url="/", status_code=303)
@@ -2963,6 +3000,10 @@ def server_companies_page(request: Request):
             <td>{slug}</td>
             <td>{status}</td>
             <td>
+                <p style="margin:0 0 8px 0;">
+                    <a class="button secondary" href="/server/companies/{raw_company_id}/edit">Modifier société</a>
+                </p>
+
                 <form method="post" action="/server/companies/{raw_company_id}/select-branding" style="margin:0 0 8px 0;">
                     <button type="submit">Modifier identité</button>
                 </form>
@@ -3125,6 +3166,98 @@ def server_company_status_change(company_id: int, status: str, request: Request)
         )
 
     return RedirectResponse(url="/server/companies", status_code=303)
+
+
+
+@app.get("/server/companies/{company_id}/edit", response_class=HTMLResponse)
+def server_company_edit_page(company_id: int, request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import html
+    import server_user_model as identity
+
+    company = identity.get_company_by_id(company_id)
+    if company is None:
+        return HTMLResponse(
+            layout(
+                "Société introuvable",
+                """
+                <h2>Modifier société</h2>
+                <div class="error">Société introuvable.</div>
+                <p><a class="button secondary" href="/server/companies">Retour sociétés</a></p>
+                """
+            ),
+            status_code=404,
+        )
+
+    name = html.escape(str(company["name"] or ""))
+    slug = html.escape(str(company["slug"] or ""))
+    status = str(company["status"] or "active")
+
+    content = f"""
+    <h2>Modifier société</h2>
+
+    <form method="post" action="/server/companies/{company_id}/edit" class="card">
+        <label>Nom de la société
+            <input type="text" name="company_name" value="{name}" required>
+        </label>
+
+        <label>Slug technique
+            <input type="text" name="company_slug" value="{slug}" required>
+        </label>
+
+        <label>Statut
+            <select name="status">
+                <option value="active" {"selected" if status == "active" else ""}>active</option>
+                <option value="inactive" {"selected" if status == "inactive" else ""}>inactive</option>
+            </select>
+        </label>
+
+        <button type="submit">Enregistrer</button>
+        <a class="button secondary" href="/server/companies">Retour</a>
+    </form>
+    """
+
+    return layout("Modifier société", content)
+
+
+@app.post("/server/companies/{company_id}/edit", response_class=HTMLResponse)
+def server_company_edit_submit(
+    company_id: int,
+    request: Request,
+    company_name: str = Form(...),
+    company_slug: str = Form(...),
+    status: str = Form(...),
+):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import html
+    import server_user_model as identity
+
+    try:
+        slug = _company_slug_from_name(company_slug)
+        identity.update_company_basic(company_id, company_name, slug, status)
+
+    except Exception as exc:
+        safe_error = html.escape(str(exc))
+        return HTMLResponse(
+            layout(
+                "Erreur modification société",
+                f"""
+                <h2>Modifier société</h2>
+                <div class="error">Impossible de modifier la société : {safe_error}</div>
+                <p><a class="button secondary" href="/server/companies/{company_id}/edit">Retour</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/companies", status_code=303)
+
 
 
 @app.get("/server/companies/new", response_class=HTMLResponse)
