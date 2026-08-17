@@ -2946,10 +2946,15 @@ def server_companies_page(request: Request):
 
     rows = ""
     for company in companies:
-        company_id = html.escape(str(company["id"]))
+        raw_company_id = int(company["id"])
+        raw_status = str(company["status"] or "")
+        company_id = html.escape(str(raw_company_id))
         name = html.escape(str(company["name"] or ""))
         slug = html.escape(str(company["slug"] or ""))
-        status = html.escape(str(company["status"] or ""))
+        status = html.escape(raw_status)
+
+        next_status = "inactive" if raw_status == "active" else "active"
+        button_label = "Désactiver" if raw_status == "active" else "Réactiver"
 
         rows += f"""
         <tr>
@@ -2957,6 +2962,11 @@ def server_companies_page(request: Request):
             <td><strong>{name}</strong></td>
             <td>{slug}</td>
             <td>{status}</td>
+            <td>
+                <form method="post" action="/server/companies/{raw_company_id}/status/{next_status}" style="margin:0;">
+                    <button type="submit">{button_label}</button>
+                </form>
+            </td>
         </tr>
         """
 
@@ -2993,6 +3003,7 @@ def server_companies_page(request: Request):
                     <th>Nom</th>
                     <th>Slug</th>
                     <th>Statut</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -3003,6 +3014,65 @@ def server_companies_page(request: Request):
     """
 
     return layout("Gestion des sociétés", content)
+
+
+
+@app.post("/server/companies/{company_id}/status/{status}")
+def server_company_status_change(company_id: int, status: str, request: Request):
+    admin_response = require_owner_or_super_admin(request)
+    if admin_response:
+        return admin_response
+
+    import server_user_model as identity
+
+    try:
+        companies = identity.list_companies()
+        active_companies = [
+            company for company in companies
+            if str(company["status"] or "") == "active"
+        ]
+
+        if status == "inactive":
+            current_company = next(
+                (company for company in companies if int(company["id"]) == int(company_id)),
+                None,
+            )
+
+            if (
+                current_company
+                and str(current_company["status"] or "") == "active"
+                and len(active_companies) <= 1
+            ):
+                return HTMLResponse(
+                    layout(
+                        "Action refusée",
+                        """
+                        <h2>Gestion des sociétés</h2>
+                        <div class="error">
+                            Impossible de désactiver la dernière société active.
+                        </div>
+                        <p><a class="button secondary" href="/server/companies">Retour sociétés</a></p>
+                        """
+                    ),
+                    status_code=400,
+                )
+
+        identity.set_company_status(company_id, status)
+
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Erreur société",
+                f"""
+                <h2>Gestion des sociétés</h2>
+                <div class="error">Impossible de modifier le statut société : {exc}</div>
+                <p><a class="button secondary" href="/server/companies">Retour sociétés</a></p>
+                """
+            ),
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/server/companies", status_code=303)
 
 
 @app.get("/server/companies/new", response_class=HTMLResponse)

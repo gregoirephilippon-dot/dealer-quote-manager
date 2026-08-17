@@ -365,6 +365,7 @@ def list_companies_for_user(email: str):
             WHERE u.email = ?
               AND u.status = 'active'
               AND ca.status = 'active'
+              AND c.status = 'active'
             ORDER BY c.name
             """,
             (email,),
@@ -596,6 +597,38 @@ def set_user_status(user_id: int, status: str):
             (status, now, user_id),
         )
         conn.commit()
+
+
+def set_company_status(company_id: int, status: str):
+    import datetime
+
+    allowed = {"active", "inactive"}
+    if status not in allowed:
+        raise ValueError(f"Statut société invalide : {status}")
+
+    init_server_identity_tables()
+
+    now = datetime.datetime.utcnow().isoformat()
+
+    with get_connection() as conn:
+        company = conn.execute(
+            "SELECT id FROM companies WHERE id = ?",
+            (company_id,),
+        ).fetchone()
+
+        if company is None:
+            raise ValueError(f"Société introuvable : {company_id}")
+
+        conn.execute(
+            """
+            UPDATE companies
+            SET status = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status, now, company_id),
+        )
+        conn.commit()
+
 
 def set_company_access_status(user_id: int, company_id: int, status: str):
     init_server_identity_tables()
