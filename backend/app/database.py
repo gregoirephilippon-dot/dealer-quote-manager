@@ -49,6 +49,15 @@ def init_db():
                 total_parts REAL,
                 total_labour REAL,
                 total_misc REAL,
+
+                oil_price_per_liter REAL DEFAULT 0,
+                oil_service_count REAL DEFAULT 0,
+                oil_quantity_per_service REAL DEFAULT 0,
+                coolant_price_per_liter REAL DEFAULT 0,
+                coolant_service_count REAL DEFAULT 0,
+                coolant_quantity_per_service REAL DEFAULT 0,
+                fluid_total REAL DEFAULT 0,
+
                 total_cost REAL,
 
                 selling_total REAL,

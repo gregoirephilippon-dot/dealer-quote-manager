@@ -1864,6 +1864,27 @@ def archives_page(request: Request):
 
 
 
+
+def ensure_quote_fluid_columns():
+    columns = [
+        ("oil_price_per_liter", "REAL DEFAULT 0"),
+        ("oil_service_count", "REAL DEFAULT 0"),
+        ("oil_quantity_per_service", "REAL DEFAULT 0"),
+        ("coolant_price_per_liter", "REAL DEFAULT 0"),
+        ("coolant_service_count", "REAL DEFAULT 0"),
+        ("coolant_quantity_per_service", "REAL DEFAULT 0"),
+        ("fluid_total", "REAL DEFAULT 0"),
+    ]
+
+    with get_connection() as conn:
+        for column_name, column_type in columns:
+            try:
+                conn.execute(f"ALTER TABLE quotes ADD COLUMN {column_name} {column_type}")
+                conn.commit()
+            except Exception:
+                pass
+
+
 @app.get("/quote/{quote_id}/inputs", response_class=HTMLResponse)
 def quote_inputs_page(quote_id: int, request: Request):
     login_response = require_login(request)
@@ -1872,6 +1893,7 @@ def quote_inputs_page(quote_id: int, request: Request):
 
     init_db()
     ensure_quote_services(quote_id)
+    ensure_quote_fluid_columns()
     with get_connection() as conn:
         quote = get_quote_for_active_company_request(conn, quote_id, request)
 
@@ -1910,6 +1932,20 @@ def quote_inputs_page(quote_id: int, request: Request):
             <label>Coût total pièces<input type="number" step="0.01" name="total_parts" value="{fmt_number(quote['total_parts'])}"></label>
             <label>Coût total main-d’œuvre<input type="number" step="0.01" name="total_labour" value="{fmt_number(quote['total_labour'])}"></label>
             <label>Coût divers<input type="number" step="0.01" name="total_misc" value="{fmt_number(quote['total_misc'])}"></label>
+
+            <h2>Huile / coolant</h2>
+            <div class="grid">
+                <label>Prix huile / litre<input type="number" step="0.01" name="oil_price_per_liter" value="{fmt_number(quote['oil_price_per_liter'])}"></label>
+                <label>Nb services huile<input type="number" step="0.01" name="oil_service_count" value="{fmt_number(quote['oil_service_count'])}"></label>
+                <label>Litres huile / service<input type="number" step="0.01" name="oil_quantity_per_service" value="{fmt_number(quote['oil_quantity_per_service'])}"></label>
+
+                <label>Prix coolant / litre<input type="number" step="0.01" name="coolant_price_per_liter" value="{fmt_number(quote['coolant_price_per_liter'])}"></label>
+                <label>Nb services coolant<input type="number" step="0.01" name="coolant_service_count" value="{fmt_number(quote['coolant_service_count'])}"></label>
+                <label>Litres coolant / service<input type="number" step="0.01" name="coolant_quantity_per_service" value="{fmt_number(quote['coolant_quantity_per_service'])}"></label>
+
+                <label>Total huile + coolant<input type="number" step="0.01" value="{fmt_number(quote['fluid_total'])}" readonly></label>
+            </div>
+            <p class="muted">Le total huile + coolant est ajouté à 2,2 si inclus, sinon à 2,1 si inclus.</p>
             <label>Devise<input type="text" name="currency" value="{quote['currency'] or 'EUR'}"></label>
         </div>
         <button type="submit">Enregistrer données contrat + recalculer</button>
@@ -1934,6 +1970,12 @@ def save_quote_inputs(
     total_parts: float = Form(0),
     total_labour: float = Form(0),
     total_misc: float = Form(0),
+    oil_price_per_liter: float = Form(0),
+    oil_service_count: float = Form(0),
+    oil_quantity_per_service: float = Form(0),
+    coolant_price_per_liter: float = Form(0),
+    coolant_service_count: float = Form(0),
+    coolant_quantity_per_service: float = Form(0),
     currency: str = Form("EUR"),
 ):
     login_response = require_login(request)
@@ -1942,10 +1984,16 @@ def save_quote_inputs(
 
     init_db()
 
+    ensure_quote_fluid_columns()
     with get_connection() as conn:
         quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
+
+    fluid_total = (
+        (oil_price_per_liter or 0) * (oil_service_count or 0) * (oil_quantity_per_service or 0)
+        + (coolant_price_per_liter or 0) * (coolant_service_count or 0) * (coolant_quantity_per_service or 0)
+    )
 
     total_cost = (total_parts or 0) + (total_labour or 0) + (total_misc or 0)
     with get_connection() as conn:
@@ -1953,11 +2001,19 @@ def save_quote_inputs(
             """
             UPDATE quotes
             SET customer_name=?, product_designation=?, engine_serial_number=?, product_name=?, country=?, status=?,
-                total_hours=?, hours_per_year=?, labour_rate=?, total_parts=?, total_labour=?, total_misc=?, total_cost=?, currency=?
+                total_hours=?, hours_per_year=?, labour_rate=?, total_parts=?, total_labour=?, total_misc=?,
+                oil_price_per_liter=?, oil_service_count=?, oil_quantity_per_service=?,
+                coolant_price_per_liter=?, coolant_service_count=?, coolant_quantity_per_service=?,
+                fluid_total=?,
+                total_cost=?, currency=?
             WHERE id=? AND company_id=?
             """,
             (customer_name.strip(), product_designation.strip(), engine_serial_number.strip(), product_name.strip(), country.strip(), status,
-             total_hours, hours_per_year, labour_rate, total_parts, total_labour, total_misc, total_cost, currency.strip() or "EUR", quote_id, get_active_company_id_for_request(request)),
+             total_hours, hours_per_year, labour_rate, total_parts, total_labour, total_misc,
+             oil_price_per_liter, oil_service_count, oil_quantity_per_service,
+             coolant_price_per_liter, coolant_service_count, coolant_quantity_per_service,
+             fluid_total,
+             total_cost, currency.strip() or "EUR", quote_id, get_active_company_id_for_request(request)),
         )
         conn.commit()
 

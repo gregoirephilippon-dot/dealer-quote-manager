@@ -495,7 +495,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             ["Marge", money(margin_amount, currency), "Taux de marge", margin_percent_txt],
             ["Prix mensuel", money(quote["selling_monthly"], currency), "Services inclus", str(len(services))],
             ["Pieces", money(quote["total_parts"], currency), "Main d'oeuvre", money(quote["total_labour"], currency)],
-            ["Misc", money(quote["total_misc"], currency), "", ""],
+            ["Misc", money(quote["total_misc"], currency), "Total huile + coolant", money(row_value(quote, "fluid_total", 0), currency)],
         ],
     )
 

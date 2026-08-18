@@ -223,10 +223,51 @@ def calculate_parts_totals_with_dc(conn, quote_id: int, fallback_total_parts: fl
     return dealer_total, customer_total, used_lines
 
 
+
+def ensure_quote_fluid_columns(conn):
+    columns = [
+        ("oil_price_per_liter", "REAL DEFAULT 0"),
+        ("oil_service_count", "REAL DEFAULT 0"),
+        ("oil_quantity_per_service", "REAL DEFAULT 0"),
+        ("coolant_price_per_liter", "REAL DEFAULT 0"),
+        ("coolant_service_count", "REAL DEFAULT 0"),
+        ("coolant_quantity_per_service", "REAL DEFAULT 0"),
+        ("fluid_total", "REAL DEFAULT 0"),
+    ]
+
+    for column_name, column_type in columns:
+        try:
+            conn.execute(f"ALTER TABLE quotes ADD COLUMN {column_name} {column_type}")
+            conn.commit()
+        except Exception:
+            pass
+
+
+def quote_value(row, key, default=0):
+    try:
+        if key in row.keys():
+            return row[key]
+    except Exception:
+        pass
+    return default
+
+
+def calculate_fluid_total_from_quote(quote):
+    return (
+        to_float(quote_value(quote, "oil_price_per_liter", 0))
+        * to_float(quote_value(quote, "oil_service_count", 0))
+        * to_float(quote_value(quote, "oil_quantity_per_service", 0))
+        + to_float(quote_value(quote, "coolant_price_per_liter", 0))
+        * to_float(quote_value(quote, "coolant_service_count", 0))
+        * to_float(quote_value(quote, "coolant_quantity_per_service", 0))
+    )
+
+
 def apply_pricing(quote_id: int):
     init_db()
 
     with get_connection() as conn:
+        ensure_quote_fluid_columns(conn)
         quote = conn.execute(
             """
             SELECT
@@ -238,7 +279,14 @@ def apply_pricing(quote_id: int):
                 total_cost,
                 total_hours,
                 hours_per_year,
-                labour_rate
+                labour_rate,
+                oil_price_per_liter,
+                oil_service_count,
+                oil_quantity_per_service,
+                coolant_price_per_liter,
+                coolant_service_count,
+                coolant_quantity_per_service,
+                fluid_total
             FROM quotes
             WHERE id = ?
             """,
@@ -259,6 +307,7 @@ def apply_pricing(quote_id: int):
         total_hours = quote["total_hours"] or 0
         hours_per_year = quote["hours_per_year"] or 0
         labour_rate_input = quote["labour_rate"] or 0
+        fluid_total = calculate_fluid_total_from_quote(quote)
 
         labour_margin = settings.get("labour_margin_percent", 0)
         admin_fee = settings.get("admin_fee_percent", 0)
@@ -292,7 +341,31 @@ def apply_pricing(quote_id: int):
         additional_services_total = 0
 
         for service in included_services:
+            included_service_ids = {
+                str(row["service_id"] or "")
+                for row in conn.execute(
+                    """
+                    SELECT service_id
+                    FROM quote_services
+                    WHERE quote_id = ?
+                      AND included = 1
+                    """,
+                    (quote_id,),
+                ).fetchall()
+            }
+            fluid_service_id = None
+
+            if fluid_total > 0:
+                if "2,2" in included_service_ids:
+                    fluid_service_id = "2,2"
+                elif "2,1" in included_service_ids:
+                    fluid_service_id = "2,1"
+
             service_price = calculate_service_price(service, labour_rate_input, travel_fee_fixed)
+
+            if fluid_service_id and str(service["service_id"] or "") == fluid_service_id:
+                service_price += fluid_total
+
             additional_services_total += service_price
 
             conn.execute(
@@ -357,12 +430,14 @@ def apply_pricing(quote_id: int):
             """
             UPDATE quotes
             SET
+                fluid_total = ?,
                 selling_total = ?,
                 selling_monthly = ?,
                 selling_per_hour = ?
             WHERE id = ?
             """,
             (
+                fluid_total,
                 selling_total,
                 selling_monthly,
                 selling_per_hour,
@@ -378,6 +453,7 @@ def apply_pricing(quote_id: int):
     print(f"Lignes pièces avec DC utilisées : {dc_lines_used}")
     print(f"Main d'oeuvre base : {total_labour:.2f} {currency} + {labour_margin}%")
     print(f"Services additionnels inclus : {additional_services_total:.2f} {currency}")
+    print(f"Total huile + coolant : {fluid_total:.2f} {currency}")
     print(f"Frais deplacement fixes : {travel_fee_fixed:.2f} {currency}")
     print(f"Frais logistique : {logistics_fee}%")
     print(f"Frais admin : {admin_fee}%")
