@@ -199,8 +199,86 @@ def get_quote(quote_id: int):
     return quote, lines, interventions
 
 
+
+def row_value(row, key, default=None):
+    try:
+        if key in row.keys():
+            return row[key]
+    except Exception:
+        pass
+    return default
+
+
+def to_float(value, default=0.0):
+    try:
+        return float(value or 0)
+    except Exception:
+        return default
+
+
+def get_line_catalog_total(line):
+    total_price = to_float(row_value(line, "total_price", 0))
+    quantity = to_float(row_value(line, "quantity", 0))
+    unit_price = to_float(row_value(line, "unit_price", 0))
+
+    if total_price > 0:
+        return total_price
+
+    if quantity > 0 and unit_price > 0:
+        return quantity * unit_price
+
+    return 0.0
+
+
+def build_parts_dc_analysis(lines):
+    catalog_total = 0.0
+    dealer_total = 0.0
+    customer_total = 0.0
+    dc_lines = 0
+    no_dc_lines = 0
+
+    for line in lines:
+        line_total = get_line_catalog_total(line)
+        if line_total <= 0:
+            continue
+
+        discount_code = str(row_value(line, "discount_code", "") or "").strip()
+
+        dealer_net = to_float(row_value(line, "dealer_net_total", 0))
+        customer_price = to_float(row_value(line, "customer_price_total", 0))
+
+        if dealer_net <= 0:
+            dealer_net = line_total
+
+        if customer_price <= 0:
+            customer_price = line_total
+
+        catalog_total += line_total
+        dealer_total += dealer_net
+        customer_total += customer_price
+
+        if discount_code:
+            dc_lines += 1
+        else:
+            no_dc_lines += 1
+
+    margin_amount = customer_total - dealer_total
+    margin_percent = (margin_amount / customer_total * 100) if customer_total else 0.0
+
+    return {
+        "catalog_total": catalog_total,
+        "dealer_total": dealer_total,
+        "customer_total": customer_total,
+        "margin_amount": margin_amount,
+        "margin_percent": margin_percent,
+        "dc_lines": dc_lines,
+        "no_dc_lines": no_dc_lines,
+    }
+
+
 def render_quote_html(quote, lines, interventions):
     currency = quote["currency"] or "EUR"
+    parts_dc = build_parts_dc_analysis(lines)
 
     product_designation = escape(str(quote["product_designation"] or ""))
     serial = escape(str(quote["engine_serial_number"] or ""))
@@ -492,6 +570,43 @@ def render_quote_html(quote, lines, interventions):
                 {intervention_rows}
             </tbody>
         </table>
+
+
+        <h2>Analyse pieces / remises DC</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="label">Total pieces catalogue</div>
+                <div class="value">{money(parts_dc["catalog_total"], currency)}</div>
+            </div>
+            <div class="card">
+                <div class="label">Cout achat dealer pieces</div>
+                <div class="value">{money(parts_dc["dealer_total"], currency)}</div>
+            </div>
+            <div class="card">
+                <div class="label">Prix vente client pieces</div>
+                <div class="value">{money(parts_dc["customer_total"], currency)}</div>
+            </div>
+            <div class="card">
+                <div class="label">Marge reelle pieces</div>
+                <div class="value">{money(parts_dc["margin_amount"], currency)}</div>
+            </div>
+            <div class="card">
+                <div class="label">Taux marge pieces</div>
+                <div class="value">{number(parts_dc["margin_percent"], " %")}</div>
+            </div>
+            <div class="card">
+                <div class="label">Lignes pieces avec DC</div>
+                <div class="value">{parts_dc["dc_lines"]}</div>
+            </div>
+            <div class="card">
+                <div class="label">Lignes pieces sans DC</div>
+                <div class="value">{parts_dc["no_dc_lines"]}</div>
+            </div>
+        </div>
+        <p class="note">
+            Les lignes avec DC utilisent les remises de la page Remises dealer.
+            Les lignes sans DC sont conservees au montant catalogue, sans remise.
+        </p>
 
         <h2>Lignes detaillees importees</h2>
         {extra_line_note}
