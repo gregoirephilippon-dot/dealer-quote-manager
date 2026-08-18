@@ -365,7 +365,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         [
             [
                 build_company_identity_block(quote),
-                Paragraph("Devis contrat service", styles["TitleBlue"]),
+                Paragraph("Contrat de maintenance pieces et service", styles["TitleBlue"]),
                 Paragraph(f"Devis ID {quote['id']}<br/>Statut : {quote['status']}<br/>{quote['created_at']}", styles["RightSmall"]),
             ]
         ],
@@ -393,7 +393,6 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             ["Numero de serie", quote["engine_serial_number"] or "-", "Produit", quote["product_name"] or "-"],
             ["Pays", quote["country"] or "-", "Devise", currency],
             ["Heures contrat", number(quote["total_hours"], " h"), "Heures par an", number(quote["hours_per_year"], " h")],
-            ["Taux horaire input", money(quote["labour_rate"], currency) + "/h" if quote["labour_rate"] is not None else "-", "", ""],
         ],
     )
 
@@ -410,6 +409,16 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             ["Prix total contrat", money(selling_total, currency), "Prix mensuel", money(quote["selling_monthly"], currency)],
             ["Prix horaire", money(selling_per_hour, currency) + "/h" if selling_per_hour is not None else "-", "Services inclus", str(len(services))],
             ["Heures contrat", number(total_hours, " h"), "Devise", currency],
+        ],
+    )
+
+    story.append(Paragraph("Cadre du contrat", styles["Section"]))
+    add_kv_table(
+        story,
+        [
+            ["Type de contrat", "Maintenance pieces et service", "Document", "Offre client"],
+            ["Garantie supplementaire", "1 an", "Limite fonctionnement", "3000 heures moteur"],
+            ["Perimetre", "Selon services inclus ci-dessous", "Validation", "Sous reserve technique"],
         ],
     )
 
@@ -481,7 +490,38 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
 
     story.append(Spacer(1, 10))
     story.append(Paragraph("Conditions et remarques", styles["Section"]))
-    story.append(Paragraph("Offre etablie sous reserve de validation technique, disponibilite des pieces et conditions contractuelles applicables.", styles["Small"]))
+    story.append(Paragraph(
+        "Ce contrat de maintenance pieces et service est etabli sous reserve de validation technique, "
+        "de disponibilite des pieces et de confirmation des conditions contractuelles applicables. "
+        "La garantie supplementaire indiquee est limitee a 1 an et 3000 heures moteur, selon le premier terme atteint. "
+        "Les prestations realisees restent limitees au perimetre des services inclus dans le present document.",
+        styles["Small"],
+    ))
+
+    story.append(Spacer(1, 18))
+    story.append(Paragraph("Signatures", styles["Section"]))
+    signature_table = Table(
+        [
+            ["Pour le dealer", "Pour le client"],
+            ["Date, nom, signature et cachet", "Date, nom, signature et cachet"],
+            ["", ""],
+        ],
+        colWidths=[85 * mm, 85 * mm],
+    )
+    signature_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#102033")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#9CA3AF")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 2), (-1, 2), 38),
+            ]
+        )
+    )
+    story.append(signature_table)
 
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
 
