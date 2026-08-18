@@ -133,13 +133,27 @@ def apply_pricing(quote_id: int):
 
         selling_total = 0
 
+        # Indexation cumulative, séparée pièces / main-d’œuvre.
+        # Exemple :
+        # Année 1 : base
+        # Année 2 : année 1 x indexation année 2
+        # Année 3 : année 2 x indexation année 3
+        parts_factor = 1
+        labour_factor = 1
+
         for year_number in range(1, contract_years + 1):
             parts_indexation = get_setting_float(settings, f"indexation_parts_year_{year_number}", 0)
             labour_indexation = get_setting_float(settings, f"indexation_labour_year_{year_number}", 0)
 
-            yearly_parts = annual_parts_base * (1 + parts_indexation / 100)
-            yearly_labour = annual_labour_base * (1 + labour_indexation / 100)
+            parts_factor = parts_factor * (1 + parts_indexation / 100)
+            labour_factor = labour_factor * (1 + labour_indexation / 100)
+
+            yearly_parts = annual_parts_base * parts_factor
+            yearly_labour = annual_labour_base * labour_factor
             yearly_misc = annual_misc_base
+
+            # Les services additionnels restent répartis à plat pour l'instant.
+            # Ils seront ventilés plus finement quand on distinguera pièces / MO / huiles.
             yearly_services = annual_services_base
 
             yearly_subtotal = yearly_parts + yearly_labour + yearly_misc + yearly_services
