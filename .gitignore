@@ -57,3 +57,8 @@ data/feedback/
 data/feedback_webhook_url.txt
 
 storage/
+
+# Audit local temporaire
+AUDIT_CALCULS_EXCEL_VS_LOGICIEL.md
+audit_formules_excel.json
+audit_formules_logiciel.json
