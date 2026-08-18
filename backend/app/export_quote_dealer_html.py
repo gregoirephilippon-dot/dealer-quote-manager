@@ -549,6 +549,10 @@ def render_quote_html(quote, lines, interventions):
                 <div class="value">{money(quote["total_misc"], currency)}</div>
             </div>
             <div class="card">
+                <div class="label">Total huile + coolant</div>
+                <div class="value">{money(row_value(quote, "fluid_total", 0), currency)}</div>
+            </div>
+            <div class="card">
                 <div class="label">Heures contrat</div>
                 <div class="value">{number(quote["total_hours"], " h")}</div>
             </div>
