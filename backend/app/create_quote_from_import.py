@@ -27,8 +27,12 @@ def create_quote_from_json(json_path: str, company_id: int | None = None):
 
     currency = basis.get("currency") or "EUR"
 
-    total_hours = basis.get("total_calculation_hours")
-    hours_per_year = basis.get("op_hours_per_year")
+    # Attention :
+    # total_calculation_hours / op_hours_per_year viennent du fichier Volvo.
+    # Ce ne sont pas les heures moteur du contrat.
+    # Les heures contrat doivent etre renseignees dans le devis.
+    total_hours = 0
+    hours_per_year = 0
     labour_rate = basis.get("labour_rate")
 
     total_parts = result.get("total_material_cost")

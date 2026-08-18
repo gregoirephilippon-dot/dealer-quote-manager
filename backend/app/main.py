@@ -1925,9 +1925,9 @@ def quote_inputs_page(quote_id: int, request: Request):
         </div>
         <h3>Contrat & coûts importés</h3>
         <div class="card grid">
-            <label>Contract length calculée<input type="number" step="0.01" value="{fmt_number(contract_years)}" disabled></label>
-            <label>Total calculation hours<input type="number" step="0.01" name="total_hours" value="{fmt_number(quote['total_hours'])}"></label>
-            <label>Op hours per year<input type="number" step="0.01" name="hours_per_year" value="{fmt_number(quote['hours_per_year'])}"></label>
+            <label>Duree contrat calculee<input type="number" step="0.01" value="{fmt_number(contract_years)}" disabled></label>
+            <label>Heures moteur contrat<input type="number" step="0.01" name="total_hours" value="{fmt_number(quote['total_hours'])}"></label>
+            <label>Heures moteur par an<input type="number" step="0.01" name="hours_per_year" value="{fmt_number(quote['hours_per_year'])}"></label>
             <label>Taux horaire main-d’œuvre input<input type="number" step="0.01" name="labour_rate" value="{fmt_number(quote['labour_rate'])}"></label>
             <label>Coût total pièces<input type="number" step="0.01" name="total_parts" value="{fmt_number(quote['total_parts'])}"></label>
             <label>Coût total main-d’œuvre<input type="number" step="0.01" name="total_labour" value="{fmt_number(quote['total_labour'])}"></label>
