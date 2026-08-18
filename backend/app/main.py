@@ -1962,6 +1962,7 @@ def save_quote_inputs(
         conn.commit()
 
     regenerate_quote(quote_id)
+    run_command([sys.executable, "backend/app/apply_pricing.py", str(quote_id)])
     return RedirectResponse(url=f"/quote/{quote_id}/inputs", status_code=303)
 
 @app.get("/quote/{quote_id}/services", response_class=HTMLResponse)

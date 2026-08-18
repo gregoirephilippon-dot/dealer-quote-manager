@@ -41,6 +41,12 @@ def create_quote_from_json(json_path: str, company_id: int | None = None):
     default_company_id = company_id if company_id is not None else identity.get_active_company_id()
 
     with get_connection() as conn:
+        try:
+            conn.execute("ALTER TABLE quote_lines ADD COLUMN discount_code TEXT")
+            conn.commit()
+        except Exception:
+            pass
+
         cursor = conn.cursor()
 
         cursor.execute(
@@ -133,6 +139,7 @@ def create_quote_from_json(json_path: str, company_id: int | None = None):
                     quantity,
                     unit_price,
                     total_price,
+                    discount_code,
                     labour_time,
                     source_sheet
                 )
@@ -146,6 +153,7 @@ def create_quote_from_json(json_path: str, company_id: int | None = None):
                     quantity,
                     unit_price,
                     total_price,
+                    line.get("discount_code") or line.get("dc") or line.get("discountCode"),
                     line.get("labour_time"),
                     "Hidden for import",
                 ),

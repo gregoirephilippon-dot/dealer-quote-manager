@@ -1,6 +1,7 @@
 import sys
 from database import get_connection, init_db
 from settings import get_settings_dict
+from dealer_discount_settings import ensure_dealer_discount_schema
 
 
 def apply_margin(amount, percent):
@@ -52,6 +53,176 @@ def calculate_service_price(service, labour_rate, travel_fee):
     return fixed_price + labour_part + quantity_part + travel_part
 
 
+
+
+def ensure_quote_lines_discount_columns(conn):
+    columns = [
+        ("discount_code", "TEXT"),
+        ("dealer_net_total", "REAL DEFAULT 0"),
+        ("customer_price_total", "REAL DEFAULT 0"),
+    ]
+
+    for column_name, column_type in columns:
+        try:
+            conn.execute(f"ALTER TABLE quote_lines ADD COLUMN {column_name} {column_type}")
+            conn.commit()
+        except Exception:
+            pass
+
+
+def to_float(value, default=0.0):
+    try:
+        return float(value or 0)
+    except Exception:
+        return default
+
+
+def normalize_discount_code(value):
+    if value is None:
+        return None
+
+    text = str(value).strip().replace(",", ".")
+    if not text:
+        return None
+
+    try:
+        return int(float(text))
+    except Exception:
+        return None
+
+
+def enrich_quote_lines_discount_codes_from_catalog(conn, quote_id: int):
+    """
+    Remplit quote_lines.discount_code depuis price_catalog.discount_code
+    avec correspondance quote_lines.part_number = price_catalog.part_no.
+    """
+    ensure_quote_lines_discount_columns(conn)
+
+    try:
+        conn.execute(
+            """
+            UPDATE quote_lines
+            SET discount_code = (
+                SELECT pc.discount_code
+                FROM price_catalog pc
+                WHERE TRIM(pc.part_no) = TRIM(quote_lines.part_number)
+                  AND pc.discount_code IS NOT NULL
+                  AND TRIM(pc.discount_code) <> ''
+                LIMIT 1
+            )
+            WHERE quote_id = ?
+              AND (discount_code IS NULL OR TRIM(discount_code) = '')
+              AND part_number IS NOT NULL
+              AND TRIM(part_number) <> ''
+              AND EXISTS (
+                SELECT 1
+                FROM price_catalog pc
+                WHERE TRIM(pc.part_no) = TRIM(quote_lines.part_number)
+                  AND pc.discount_code IS NOT NULL
+                  AND TRIM(pc.discount_code) <> ''
+              )
+            """,
+            (quote_id,),
+        )
+        conn.commit()
+    except Exception as exc:
+        print(f"Enrichissement DC depuis catalogue impossible : {exc}")
+
+
+def calculate_parts_totals_with_dc(conn, quote_id: int, fallback_total_parts: float):
+    """
+    Logique DC :
+    - prix catalogue ligne = total_price ou quantity x unit_price
+    - prix achat dealer = prix catalogue x (1 - dealer_discount)
+    - prix vente client = prix catalogue x (1 - customer_type_discount)
+
+    Si aucune ligne exploitable avec DC :
+    - achat dealer = fallback_total_parts
+    - vente client = fallback_total_parts
+    """
+    ensure_dealer_discount_schema()
+    ensure_quote_lines_discount_columns(conn)
+    enrich_quote_lines_discount_codes_from_catalog(conn, quote_id)
+
+    discounts = conn.execute(
+        """
+        SELECT dc, dealer_discount, customer_type_discount
+        FROM dealer_discount_codes
+        """
+    ).fetchall()
+
+    discount_map = {}
+    for row in discounts:
+        dc = normalize_discount_code(row["dc"])
+        if dc is None:
+            continue
+
+        discount_map[dc] = {
+            "dealer_discount": to_float(row["dealer_discount"]),
+            "customer_type_discount": to_float(row["customer_type_discount"]),
+        }
+
+    lines = conn.execute(
+        """
+        SELECT id, quantity, unit_price, total_price, discount_code
+        FROM quote_lines
+        WHERE quote_id = ?
+        """,
+        (quote_id,),
+    ).fetchall()
+
+    dealer_total = 0
+    customer_total = 0
+    used_lines = 0
+
+    for line in lines:
+        quantity = to_float(line["quantity"])
+        unit_price = to_float(line["unit_price"])
+        total_price = to_float(line["total_price"])
+
+        catalog_total = total_price
+        if catalog_total <= 0 and quantity > 0 and unit_price > 0:
+            catalog_total = quantity * unit_price
+
+        if catalog_total <= 0:
+            continue
+
+        dc = normalize_discount_code(line["discount_code"])
+
+        if dc is not None and dc in discount_map:
+            dealer_discount = discount_map[dc]["dealer_discount"]
+            customer_discount = discount_map[dc]["customer_type_discount"]
+
+            dealer_net = catalog_total * (1 - dealer_discount)
+            customer_price = catalog_total * (1 - customer_discount)
+            used_lines += 1
+        else:
+            # Sécurité : une ligne sans DC ne doit jamais disparaître du calcul.
+            # On la conserve au montant catalogue, sans remise.
+            dealer_net = catalog_total
+            customer_price = catalog_total
+
+        dealer_total += dealer_net
+        customer_total += customer_price
+
+        conn.execute(
+            """
+            UPDATE quote_lines
+            SET dealer_net_total = ?,
+                customer_price_total = ?
+            WHERE id = ?
+            """,
+            (dealer_net, customer_price, line["id"]),
+        )
+
+    conn.commit()
+
+    if used_lines == 0:
+        return fallback_total_parts, fallback_total_parts, 0
+
+    return dealer_total, customer_total, used_lines
+
+
 def apply_pricing(quote_id: int):
     init_db()
 
@@ -95,9 +266,16 @@ def apply_pricing(quote_id: int):
         travel_fee_fixed = settings.get("travel_fee_fixed", 0)
         contract_years = get_contract_year_count(total_hours, hours_per_year)
 
-        # Les pièces ne reçoivent plus de marge globale.
-        # La logique cible est : prix achat dealer / prix vente client par famille DC.
-        selling_parts = total_parts
+        dealer_parts_total, selling_parts, dc_lines_used = calculate_parts_totals_with_dc(
+            conn,
+            quote_id,
+            total_parts,
+        )
+
+        # Si des lignes pièces avec DC existent, total_parts de référence devient le coût achat dealer.
+        # Sinon, on conserve le total pièces importé.
+        total_parts = dealer_parts_total
+
         selling_labour = apply_margin(total_labour, labour_margin)
         selling_misc = total_misc
 
@@ -195,7 +373,9 @@ def apply_pricing(quote_id: int):
         conn.commit()
 
     print(f"Pricing applique au devis ID {quote_id}")
-    print(f"Pieces base : {total_parts:.2f} {currency} - marge globale pièces désactivée")
+    print(f"Pieces achat dealer : {total_parts:.2f} {currency}")
+    print(f"Pieces vente client : {selling_parts:.2f} {currency}")
+    print(f"Lignes pièces avec DC utilisées : {dc_lines_used}")
     print(f"Main d'oeuvre base : {total_labour:.2f} {currency} + {labour_margin}%")
     print(f"Services additionnels inclus : {additional_services_total:.2f} {currency}")
     print(f"Frais deplacement fixes : {travel_fee_fixed:.2f} {currency}")

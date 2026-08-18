@@ -67,6 +67,7 @@ def init_db():
                 quantity REAL,
                 unit_price REAL,
                 total_price REAL,
+                discount_code TEXT,
                 labour_time REAL,
                 source_sheet TEXT,
 
