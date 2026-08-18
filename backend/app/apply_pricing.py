@@ -89,14 +89,15 @@ def apply_pricing(quote_id: int):
         hours_per_year = quote["hours_per_year"] or 0
         labour_rate_input = quote["labour_rate"] or 0
 
-        parts_margin = settings.get("parts_margin_percent", 0)
         labour_margin = settings.get("labour_margin_percent", 0)
         admin_fee = settings.get("admin_fee_percent", 0)
         logistics_fee = settings.get("logistics_fee_percent", 0)
         travel_fee_fixed = settings.get("travel_fee_fixed", 0)
         contract_years = get_contract_year_count(total_hours, hours_per_year)
 
-        selling_parts = apply_margin(total_parts, parts_margin)
+        # Les pièces ne reçoivent plus de marge globale.
+        # La logique cible est : prix achat dealer / prix vente client par famille DC.
+        selling_parts = total_parts
         selling_labour = apply_margin(total_labour, labour_margin)
         selling_misc = total_misc
 
@@ -194,7 +195,7 @@ def apply_pricing(quote_id: int):
         conn.commit()
 
     print(f"Pricing applique au devis ID {quote_id}")
-    print(f"Pieces base : {total_parts:.2f} {currency} + {parts_margin}%")
+    print(f"Pieces base : {total_parts:.2f} {currency} - marge globale pièces désactivée")
     print(f"Main d'oeuvre base : {total_labour:.2f} {currency} + {labour_margin}%")
     print(f"Services additionnels inclus : {additional_services_total:.2f} {currency}")
     print(f"Frais deplacement fixes : {travel_fee_fixed:.2f} {currency}")

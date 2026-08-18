@@ -4,10 +4,6 @@ from database import get_connection, init_db
 
 
 DEFAULT_SETTINGS = {
-    "parts_margin_percent": {
-        "value": 15,
-        "description": "Marge appliquee sur les pieces en pourcentage",
-    },
     "labour_margin_percent": {
         "value": 10,
         "description": "Marge appliquee sur la main d'oeuvre en pourcentage",

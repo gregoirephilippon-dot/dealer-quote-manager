@@ -2157,7 +2157,6 @@ def settings_page(request: Request):
     settings = get_settings_dict()
     yearly_indexation_html = build_yearly_indexation_settings_html(settings)
     fields = [
-        ("parts_margin_percent", "Marge pièces (%)", "Marge appliquée sur les pièces du contrat."),
         ("labour_margin_percent", "Marge main-d’œuvre (%)", "Marge appliquée sur la main-d’œuvre."),
         ("admin_fee_percent", "Frais administratifs (%)", "Frais de gestion, facturation et mise en place du contrat."),
         ("logistics_fee_percent", "Frais logistiques (%)", "Frais liés à l’expédition, préparation ou gestion des pièces."),
@@ -2202,14 +2201,12 @@ def settings_page(request: Request):
 @app.post("/settings")
 async def save_settings(
     request: Request,
-    parts_margin_percent: float = Form(...),
     labour_margin_percent: float = Form(...),
     admin_fee_percent: float = Form(...),
     logistics_fee_percent: float = Form(...),
     travel_fee_fixed: float = Form(...),
 ):
     ensure_default_settings()
-    set_setting("parts_margin_percent", parts_margin_percent)
     set_setting("labour_margin_percent", labour_margin_percent)
     set_setting("admin_fee_percent", admin_fee_percent)
     set_setting("logistics_fee_percent", logistics_fee_percent)
