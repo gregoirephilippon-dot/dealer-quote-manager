@@ -377,19 +377,10 @@ def apply_pricing(quote_id: int):
                 (service_price, service["id"]),
             )
 
-        # Répartition annuelle pour appliquer les indexations année par année.
-        annual_parts_base = selling_parts / contract_years if contract_years else selling_parts
-        annual_labour_base = selling_labour / contract_years if contract_years else selling_labour
-        annual_misc_base = selling_misc / contract_years if contract_years else selling_misc
-        annual_services_base = additional_services_total / contract_years if contract_years else additional_services_total
-
-        selling_total = 0
-
-        # Indexation cumulative, séparée pièces / main-d’œuvre.
-        # Exemple :
-        # Année 1 : base
-        # Année 2 : année 1 x indexation année 2
-        # Année 3 : année 2 x indexation année 3
+        # Indexation conforme à l'ancien Excel :
+        # - Parts et labour sont indexés avec le coefficient cumulé de l'année finale du contrat.
+        # - Misc, travel et other services ne sont pas indexés.
+        # - Les frais admin/logistique restent calculés sur la base client non indexée.
         parts_factor = 1
         labour_factor = 1
 
@@ -400,20 +391,22 @@ def apply_pricing(quote_id: int):
             parts_factor = parts_factor * (1 + parts_indexation / 100)
             labour_factor = labour_factor * (1 + labour_indexation / 100)
 
-            yearly_parts = annual_parts_base * parts_factor
-            yearly_labour = annual_labour_base * labour_factor
-            yearly_misc = annual_misc_base
+        indexed_parts = selling_parts * parts_factor
+        indexed_labour = selling_labour * labour_factor
 
-            # Les services additionnels restent répartis à plat pour l'instant.
-            # Ils seront ventilés plus finement quand on distinguera pièces / MO / huiles.
-            yearly_services = annual_services_base
+        non_indexed_subtotal = selling_parts + selling_labour + selling_misc + additional_services_total
 
-            yearly_subtotal = yearly_parts + yearly_labour + yearly_misc + yearly_services
+        logistics_fee_amount = non_indexed_subtotal * logistics_fee / 100
+        admin_fee_amount = non_indexed_subtotal * admin_fee / 100
 
-            logistics_amount = yearly_subtotal * logistics_fee / 100
-            admin_amount = yearly_subtotal * admin_fee / 100
-
-            selling_total += yearly_subtotal + logistics_amount + admin_amount
+        selling_total = (
+            indexed_parts
+            + indexed_labour
+            + selling_misc
+            + additional_services_total
+            + logistics_fee_amount
+            + admin_fee_amount
+        )
 
         selling_per_hour = None
         if total_hours:
