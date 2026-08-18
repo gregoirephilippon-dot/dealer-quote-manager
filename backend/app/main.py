@@ -1577,7 +1577,9 @@ def import_file(request: Request, file: UploadFile = File(...)):
         try:
             from overview_total_sync import apply_overview_total_to_service_2_2
             overview_totals = apply_overview_total_to_service_2_2(quote_id, upload_path)
-            service_2_2_detail = apply_service_2_2_detail_calculation(quote_id, upload_path)
+            # Ne pas écraser le montant commercial Overview par le détail technique Hidden for import.
+            # L'Overview est déjà la sortie calculée du calculateur Volvo précédent.
+            # Le détail Hidden for import restera réservé à un audit séparé.
             print(f"Overview C -> service 2.2 : {overview_totals}")
         except Exception as exc:
             print(f"Attention : impossible de remonter Overview C vers 2.2 : {exc}")
@@ -1874,6 +1876,7 @@ def ensure_quote_fluid_columns():
         ("coolant_service_count", "REAL DEFAULT 0"),
         ("coolant_quantity_per_service", "REAL DEFAULT 0"),
         ("fluid_total", "REAL DEFAULT 0"),
+        ("replace_overview_fluids", "INTEGER DEFAULT 0"),
     ]
 
     with get_connection() as conn:
@@ -1945,7 +1948,16 @@ def quote_inputs_page(quote_id: int, request: Request):
 
                 <label>Total huile + coolant<input type="number" step="0.01" value="{fmt_number(quote['fluid_total'])}" readonly></label>
             </div>
-            <p class="muted">Le total huile + coolant est ajouté à 2,2 si inclus, sinon à 2,1 si inclus.</p>
+
+            <label style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+                <input type="checkbox" name="replace_overview_fluids" {"checked" if quote["replace_overview_fluids"] else ""}>
+                <span><strong>Remplacer huile/coolant inclus dans l’Overview par le calcul logiciel</strong></span>
+            </label>
+            <p class="muted">
+                Si le service 2,2 vient de l’Overview, le total Overview est conservé comme base calculée.
+                Cette option sert à tracer que la partie huile/coolant est pilotée par le calcul logiciel,
+                sans double comptage.
+            </p>
             <label>Devise<input type="text" name="currency" value="{quote['currency'] or 'EUR'}"></label>
         </div>
         <button type="submit">Enregistrer données contrat + recalculer</button>
@@ -1976,6 +1988,7 @@ def save_quote_inputs(
     coolant_price_per_liter: float = Form(0),
     coolant_service_count: float = Form(0),
     coolant_quantity_per_service: float = Form(0),
+    replace_overview_fluids: str | None = Form(None),
     currency: str = Form("EUR"),
 ):
     login_response = require_login(request)
@@ -2005,6 +2018,7 @@ def save_quote_inputs(
                 oil_price_per_liter=?, oil_service_count=?, oil_quantity_per_service=?,
                 coolant_price_per_liter=?, coolant_service_count=?, coolant_quantity_per_service=?,
                 fluid_total=?,
+                replace_overview_fluids=?,
                 total_cost=?, currency=?
             WHERE id=? AND company_id=?
             """,
@@ -2013,6 +2027,7 @@ def save_quote_inputs(
              oil_price_per_liter, oil_service_count, oil_quantity_per_service,
              coolant_price_per_liter, coolant_service_count, coolant_quantity_per_service,
              fluid_total,
+             1 if replace_overview_fluids else 0,
              total_cost, currency.strip() or "EUR", quote_id, get_active_company_id_for_request(request)),
         )
         conn.commit()

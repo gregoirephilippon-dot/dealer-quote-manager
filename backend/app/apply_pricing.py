@@ -39,6 +39,15 @@ def get_setting_float(settings, key, default=0):
         return default
 
 
+def is_overview_imported_service(service):
+    source = str(service["source_excel"] or "").lower()
+    return (
+        "overview column c total" in source
+        or "overview" in source
+        or "summary services" in source
+    )
+
+
 def calculate_service_price(service, labour_rate, travel_fee):
     work_time = service["work_time_hours"] or 0
     quantity = service["quantity"] or 0
@@ -233,6 +242,7 @@ def ensure_quote_fluid_columns(conn):
         ("coolant_service_count", "REAL DEFAULT 0"),
         ("coolant_quantity_per_service", "REAL DEFAULT 0"),
         ("fluid_total", "REAL DEFAULT 0"),
+        ("replace_overview_fluids", "INTEGER DEFAULT 0"),
     ]
 
     for column_name, column_type in columns:
@@ -286,7 +296,8 @@ def apply_pricing(quote_id: int):
                 coolant_price_per_liter,
                 coolant_service_count,
                 coolant_quantity_per_service,
-                fluid_total
+                fluid_total,
+                replace_overview_fluids
             FROM quotes
             WHERE id = ?
             """,
@@ -308,6 +319,7 @@ def apply_pricing(quote_id: int):
         hours_per_year = quote["hours_per_year"] or 0
         labour_rate_input = quote["labour_rate"] or 0
         fluid_total = calculate_fluid_total_from_quote(quote)
+        replace_overview_fluids = bool(quote_value(quote, "replace_overview_fluids", 0))
 
         labour_margin = settings.get("labour_margin_percent", 0)
         admin_fee = settings.get("admin_fee_percent", 0)
@@ -361,10 +373,22 @@ def apply_pricing(quote_id: int):
                 elif "2,1" in included_service_ids:
                     fluid_service_id = "2,1"
 
-            service_price = calculate_service_price(service, labour_rate_input, travel_fee_fixed)
+            if is_overview_imported_service(service):
+                # Montant déjà calculé dans l'Overview importé.
+                # Ne pas recalculer avec work_time_hours x labour_rate.
+                service_price = service["fixed_price"] or service["calculated_price"] or 0
+            else:
+                service_price = calculate_service_price(service, labour_rate_input, travel_fee_fixed)
 
             if fluid_service_id and str(service["service_id"] or "") == fluid_service_id:
-                service_price += fluid_total
+                if is_overview_imported_service(service):
+                    # L'Overview est déjà un total calculé.
+                    # Si l'option est cochée, on trace que l'huile/coolant est remplacé
+                    # par le calcul logiciel, sans ajouter une deuxième fois le montant.
+                    if replace_overview_fluids and fluid_total > 0:
+                        service_price = max(service_price - fluid_total, 0) + fluid_total
+                else:
+                    service_price += fluid_total
 
             additional_services_total += service_price
 
@@ -446,7 +470,8 @@ def apply_pricing(quote_id: int):
     print(f"Lignes pièces avec DC utilisées : {dc_lines_used}")
     print(f"Main d'oeuvre base : {total_labour:.2f} {currency} + {labour_margin}%")
     print(f"Services additionnels inclus : {additional_services_total:.2f} {currency}")
-    print(f"Total huile + coolant : {fluid_total:.2f} {currency}")
+    print(f"Total huile + coolant logiciel : {fluid_total:.2f} {currency}")
+    print(f"Remplacement huile/coolant Overview : {'oui' if replace_overview_fluids else 'non'}")
     print(f"Frais deplacement fixes : {travel_fee_fixed:.2f} {currency}")
     print(f"Frais logistique : {logistics_fee}%")
     print(f"Frais admin : {admin_fee}%")

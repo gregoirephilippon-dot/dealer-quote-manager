@@ -57,6 +57,7 @@ def init_db():
                 coolant_service_count REAL DEFAULT 0,
                 coolant_quantity_per_service REAL DEFAULT 0,
                 fluid_total REAL DEFAULT 0,
+                replace_overview_fluids INTEGER DEFAULT 0,
 
                 total_cost REAL,
 
