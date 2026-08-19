@@ -2036,6 +2036,17 @@ def save_quote_inputs(
     run_command([sys.executable, "backend/app/apply_pricing.py", str(quote_id)])
     return RedirectResponse(url=f"/quote/{quote_id}/inputs", status_code=303)
 
+
+def is_locked_imported_service(row):
+    source = str(row["source_excel"] or "").lower()
+    notes = str(row["notes"] or "").lower()
+    return (
+        "overview" in source
+        or "service detecte depuis import volvo" in notes
+        or "service détecté depuis import volvo" in notes
+    )
+
+
 @app.get("/quote/{quote_id}/services", response_class=HTMLResponse)
 def quote_services_page(quote_id: int, request: Request):
     login_response = require_login(request)
@@ -2057,20 +2068,27 @@ def quote_services_page(quote_id: int, request: Request):
 
     rows = ""
     for s in services:
-        checked = "checked" if s["included"] else ""
+        locked = is_locked_imported_service(s)
+        checked = "checked" if s["included"] or locked else ""
+        disabled = "disabled" if locked else ""
+        locked_hidden = f'<input type="hidden" name="included_{s["id"]}" value="1">' if locked else ""
+        locked_badge = "<br><span class=\"muted\"><strong>Import Volvo - verrouille</strong></span>" if locked else ""
+        readonly = "readonly" if locked else ""
+        select_disabled = "disabled" if locked else ""
+        travel_hidden = f'<input type="hidden" name="travel_{s["id"]}" value="{s["extra_travel"] or "Exclude"}">' if locked else ""
         yes_selected = "selected" if str(s["extra_travel"]).lower() == "yes" else ""
         excl_selected = "selected" if str(s["extra_travel"]).lower() != "yes" else ""
         rows += f"""
         <tr>
-            <td><input type="checkbox" name="included_{s['id']}" {checked}></td>
-            <td><strong>{s['service_id']}</strong><br><span class="muted">{s['source_excel'] or ''}</span></td>
+            <td>{locked_hidden}<input type="checkbox" name="included_{s['id']}" {checked} {disabled}></td>
+            <td><strong>{s['service_id']}</strong><br><span class="muted">{s['source_excel'] or ''}</span>{locked_badge}</td>
             <td>{s['service_group']}</td>
             <td>{s['service_name']}</td>
-            <td><input class="small-input" type="number" step="0.01" name="time_{s['id']}" value="{fmt_number(s['work_time_hours'])}"></td>
-            <td><input class="small-input" type="number" step="0.01" name="qty_{s['id']}" value="{fmt_number(s['quantity'])}"></td>
-            <td><input class="small-input" type="number" step="0.01" name="unit_{s['id']}" value="{fmt_number(s['unit_price'])}"></td>
-            <td><input class="small-input" type="number" step="0.01" name="fixed_{s['id']}" value="{fmt_number(s['fixed_price'])}"></td>
-            <td><select class="wide-input" name="travel_{s['id']}"><option value="Exclude" {excl_selected}>Exclude</option><option value="Yes" {yes_selected}>Yes</option></select></td>
+            <td><input class="small-input" type="number" step="0.01" name="time_{s['id']}" value="{fmt_number(s['work_time_hours'])}" {readonly}></td>
+            <td><input class="small-input" type="number" step="0.01" name="qty_{s['id']}" value="{fmt_number(s['quantity'])}" {readonly}></td>
+            <td><input class="small-input" type="number" step="0.01" name="unit_{s['id']}" value="{fmt_number(s['unit_price'])}" {readonly}></td>
+            <td><input class="small-input" type="number" step="0.01" name="fixed_{s['id']}" value="{fmt_number(s['fixed_price'])}" {readonly}></td>
+            <td>{travel_hidden}<select class="wide-input" name="travel_{s['id']}" {select_disabled}><option value="Exclude" {excl_selected}>Exclude</option><option value="Yes" {yes_selected}>Yes</option></select></td>
             <td>{fmt_money(s['calculated_price'], currency)}</td>
         </tr>"""
 
@@ -2115,7 +2133,10 @@ async def save_quote_services(quote_id: int, request: Request):
         for s in services:
             row_id = s["id"]
             service_id = s["service_id"]
-            included = 1 if f"included_{row_id}" in form else 0
+            if is_locked_imported_service(s):
+                included = 1
+            else:
+                included = 1 if f"included_{row_id}" in form else 0
 
             def get_float(prefix, default=0):
                 raw = form.get(f"{prefix}_{row_id}", default)

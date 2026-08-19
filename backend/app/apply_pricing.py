@@ -390,7 +390,16 @@ def apply_pricing(quote_id: int):
                 else:
                     service_price += fluid_total
 
-            additional_services_total += service_price
+            # Anti-doublon import Volvo / Overview :
+            # un service importé sert à afficher le périmètre inclus,
+            # mais son montant est déjà repris dans total_parts / total_labour / total_misc.
+            # On continue donc à appliquer DC, marge, indexation et frais sur la base importée,
+            # sans ajouter le service importé une deuxième fois comme service additionnel.
+            service_price_for_total = service_price
+            if is_overview_imported_service(service):
+                service_price_for_total = 0
+
+            additional_services_total += service_price_for_total
 
             conn.execute(
                 """

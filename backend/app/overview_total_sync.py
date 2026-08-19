@@ -98,8 +98,8 @@ def apply_overview_total_to_service_2_2(quote_id, excel_path):
                     notes
                 )
                 VALUES (?, '2,2', 'Maintenance & repair', 'Maintenance parts & labour',
-                        'Overview column C total', 0, 0, 0, 0, ?, 'Exclude', ?,
-                        'Auto from Overview column C')
+                        'Overview column C total', 1, 0, 0, 0, ?, 'Exclude', ?,
+                        'Auto from Overview column C. Service detecte depuis import Volvo - verrouille')
                 """,
                 (quote_id, total, total),
             )
@@ -114,6 +114,7 @@ def apply_overview_total_to_service_2_2(quote_id, excel_path):
                     fixed_price = ?,
                     extra_travel = 'Exclude',
                     calculated_price = ?,
+                    included = 1,
                     source_excel = 'Overview column C total',
                     notes = ?
                 WHERE quote_id = ? AND service_id = '2,2'
@@ -121,7 +122,7 @@ def apply_overview_total_to_service_2_2(quote_id, excel_path):
                 (
                     total,
                     total,
-                    f"Auto from Overview column C. Parts={totals['parts']}, Labour={totals['labour']}, Misc={totals['misc']}, Total={totals['total']}",
+                    f"Auto from Overview column C. Parts={totals['parts']}, Labour={totals['labour']}, Misc={totals['misc']}, Total={totals['total']}. Service detecte depuis import Volvo - verrouille",
                     quote_id,
                 ),
             )

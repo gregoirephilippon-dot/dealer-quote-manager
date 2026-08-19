@@ -147,7 +147,7 @@ def create_quote_from_json(json_path: str, company_id: int | None = None):
                     labour_time,
                     source_sheet
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     quote_id,
