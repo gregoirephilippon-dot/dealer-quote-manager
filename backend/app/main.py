@@ -1888,6 +1888,74 @@ def ensure_quote_fluid_columns():
                 pass
 
 
+
+def get_import_control_html(conn, quote):
+    quote_id = quote["id"]
+    currency = quote["currency"] or "EUR"
+
+    service = conn.execute("""
+        SELECT service_id, service_name, included, fixed_price, calculated_price, source_excel, notes
+        FROM quote_services
+        WHERE quote_id = ? AND service_id = '2,2'
+    """, (quote_id,)).fetchone()
+
+    settings = get_settings_dict()
+
+    messages_ok = []
+    messages_warn = []
+    messages_info = []
+
+    if service and is_locked_imported_service(service):
+        messages_ok.append(
+            f"Service 2,2 détecté depuis l’import Volvo / Overview, coché et verrouillé. "
+            f"Montant Overview repris : {fmt_money(service['fixed_price'], currency)}."
+        )
+    else:
+        messages_warn.append(
+            "Service 2,2 non détecté comme import Volvo / Overview. Vérifier le fichier importé."
+        )
+
+    if not quote["total_hours"] or float(quote["total_hours"] or 0) <= 0:
+        messages_warn.append("Heures contrat non renseignées : le prix final contrat n’est pas complet.")
+
+    if not quote["hours_per_year"] or float(quote["hours_per_year"] or 0) <= 0:
+        messages_warn.append("Heures/an non renseignées : le mensuel et le prix/heure ne peuvent pas être calculés correctement.")
+
+    if not quote["labour_rate"] or float(quote["labour_rate"] or 0) <= 0:
+        messages_warn.append("Taux horaire main-d’œuvre non renseigné.")
+
+    messages_info.append(f"Pièces importées : {fmt_money(quote['total_parts'], currency)}.")
+    messages_info.append(f"Main-d’œuvre importée : {fmt_money(quote['total_labour'], currency)}.")
+    messages_info.append(f"Divers importé : {fmt_money(quote['total_misc'], currency)}.")
+
+    messages_info.append(f"Marge main-d’œuvre logiciel : {settings.get('labour_margin_percent', 0)} %.")
+    messages_info.append(f"Frais admin logiciel : {settings.get('admin_fee_percent', 0)} %.")
+    messages_info.append(f"Frais logistique logiciel : {settings.get('logistics_fee_percent', 0)} %.")
+    messages_info.append(
+        f"Indexation pièces logiciel : année 2 = {settings.get('indexation_parts_year_2', 0)} %, "
+        f"année 3 = {settings.get('indexation_parts_year_3', 0)} %."
+    )
+
+    def li(items):
+        return "".join(f"<li>{item}</li>" for item in items)
+
+    status_title = "✅ Import contrôlé"
+    status_class = "ok"
+    if messages_warn:
+        status_title = "⚠️ Import à compléter"
+        status_class = "warning"
+
+    return f"""
+    <div class="card {status_class}">
+        <h3>{status_title}</h3>
+        {f'<h4>Validé</h4><ul>{li(messages_ok)}</ul>' if messages_ok else ''}
+        {f'<h4>À vérifier / compléter</h4><ul>{li(messages_warn)}</ul>' if messages_warn else ''}
+        <h4>Paramètres appliqués</h4>
+        <ul>{li(messages_info)}</ul>
+    </div>
+    """
+
+
 @app.get("/quote/{quote_id}/inputs", response_class=HTMLResponse)
 def quote_inputs_page(quote_id: int, request: Request):
     login_response = require_login(request)
@@ -1900,8 +1968,10 @@ def quote_inputs_page(quote_id: int, request: Request):
     with get_connection() as conn:
         quote = get_quote_for_active_company_request(conn, quote_id, request)
 
-    if quote is None:
-        return quote_access_denied_response(quote_id)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
+        import_control_html = get_import_control_html(conn, quote)
 
     contract_years = ""
     if quote["total_hours"] and quote["hours_per_year"]:
@@ -1909,6 +1979,8 @@ def quote_inputs_page(quote_id: int, request: Request):
 
     content = f"""
     <h2>Données contrat / moteur ID {quote_id}</h2>
+
+    {import_control_html}
     
     <form action="/quote/{quote_id}/inputs" method="post">
         <h3>Informations client, moteur et contrat</h3>
