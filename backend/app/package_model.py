@@ -3,11 +3,6 @@ from service_catalog import SERVICE_CATALOG
 
 
 PACKAGE_PRESETS = {
-    "basic": {
-        "label": "Basic",
-        "description": "Commissioning + contrôle visuel initial.",
-        "services": ["1,1", "1,2", "2,1"],
-    },
     "base_care": {
         "label": "Base Care",
         "description": "Basic + campagne + maintenance parts & labour.",
@@ -129,12 +124,27 @@ def apply_package_to_quote(quote_id: int, package_key: str):
 
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT service_id FROM quote_services WHERE quote_id = ?",
+            """
+            SELECT service_id, source_excel, notes
+            FROM quote_services
+            WHERE quote_id = ?
+            """,
             (quote_id,),
         ).fetchall()
 
         for row in rows:
-            included = 1 if row["service_id"] in selected_services else 0
+            source = str(row["source_excel"] or "").lower()
+            notes = str(row["notes"] or "").lower()
+
+            locked_import = (
+                "overview" in source
+                or "service detecte depuis import volvo" in notes
+            )
+
+            included = 1 if (
+                row["service_id"] in selected_services
+                or locked_import
+            ) else 0
             conn.execute(
                 """
                 UPDATE quote_services

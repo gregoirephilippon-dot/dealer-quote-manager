@@ -2477,7 +2477,7 @@ def _pkg_panel_html(quote_id: int):
             {''.join(buttons)}
         </div>
         <div class="pkg-help">
-            Basic, Base Care, Comfort Care et Advanced Care sont permanents.
+            Base Care, Comfort Care et Advanced Care sont les trois packages disponibles.
             Le choix modifie les services inclus/exclus puis recalcule le devis.
         </div>
     </div>
