@@ -352,19 +352,26 @@ def apply_pricing(quote_id: int):
 
         additional_services_total = 0
 
+        included_service_ids = {
+            str(row["service_id"] or "")
+            for row in conn.execute(
+                """
+                SELECT service_id
+                FROM quote_services
+                WHERE quote_id = ?
+                  AND included = 1
+                """,
+                (quote_id,),
+            ).fetchall()
+        }
+
+        imported_overview_2_2_present = any(
+            str(row["service_id"] or "") == "2,2"
+            and is_overview_imported_service(row)
+            for row in included_services
+        )
+
         for service in included_services:
-            included_service_ids = {
-                str(row["service_id"] or "")
-                for row in conn.execute(
-                    """
-                    SELECT service_id
-                    FROM quote_services
-                    WHERE quote_id = ?
-                      AND included = 1
-                    """,
-                    (quote_id,),
-                ).fetchall()
-            }
             fluid_service_id = None
 
             if fluid_total > 0:
@@ -396,7 +403,18 @@ def apply_pricing(quote_id: int):
             # On continue donc à appliquer DC, marge, indexation et frais sur la base importée,
             # sans ajouter le service importé une deuxième fois comme service additionnel.
             service_price_for_total = service_price
+
             if is_overview_imported_service(service):
+                service_price_for_total = 0
+
+            # Anti-doublon 2.1 / 2.2 :
+            # si le 2.2 importe Volvo/Overview est deja present,
+            # le 2.1 peut rester visible dans Base Care mais ne doit pas
+            # ajouter une seconde fois les memes pieces de maintenance.
+            if (
+                imported_overview_2_2_present
+                and str(service["service_id"] or "") == "2,1"
+            ):
                 service_price_for_total = 0
 
             additional_services_total += service_price_for_total
