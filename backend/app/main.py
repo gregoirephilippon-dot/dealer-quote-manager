@@ -12,6 +12,7 @@ from settings import ensure_default_settings, get_settings_dict, set_setting
 from service_catalog import SERVICE_CATALOG
 import app_config as config
 from service_2_2_detail_calculation import apply_service_2_2_detail_calculation
+from pricing_trace_view import get_pricing_result_html
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -1877,6 +1878,7 @@ def ensure_quote_fluid_columns():
         ("coolant_quantity_per_service", "REAL DEFAULT 0"),
         ("fluid_total", "REAL DEFAULT 0"),
         ("replace_overview_fluids", "INTEGER DEFAULT 0"),
+        ("pricing_trace_json", "TEXT"),
     ]
 
     with get_connection() as conn:
@@ -1972,6 +1974,7 @@ def quote_inputs_page(quote_id: int, request: Request):
             return quote_access_denied_response(quote_id)
 
         import_control_html = get_import_control_html(conn, quote)
+        pricing_result_html = get_pricing_result_html(quote)
 
     contract_years = ""
     if quote["total_hours"] and quote["hours_per_year"]:
@@ -1980,8 +1983,6 @@ def quote_inputs_page(quote_id: int, request: Request):
     content = f"""
     <h2>Données contrat / moteur ID {quote_id}</h2>
 
-    {import_control_html}
-    
     <form action="/quote/{quote_id}/inputs" method="post">
         <h3>Informations client, moteur et contrat</h3>
         <div class="card grid">
@@ -2035,7 +2036,12 @@ def quote_inputs_page(quote_id: int, request: Request):
         <button type="submit">Enregistrer données contrat + recalculer</button>
         <a class="button" href="/quote/{quote_id}/services">Construction de l’offre</a>
         <a class="button secondary" href="/">Retour offres contrats</a>
-    </form>"""
+    </form>
+
+    {import_control_html}
+
+    {pricing_result_html}
+    """
     return layout("Données contrat / moteur", content)
 
 @app.post("/quote/{quote_id}/inputs")

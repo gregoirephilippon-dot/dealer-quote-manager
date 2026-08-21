@@ -1,3 +1,4 @@
+import json
 import sys
 from database import get_connection, init_db
 from settings import get_settings_dict
@@ -243,6 +244,7 @@ def ensure_quote_fluid_columns(conn):
         ("coolant_quantity_per_service", "REAL DEFAULT 0"),
         ("fluid_total", "REAL DEFAULT 0"),
         ("replace_overview_fluids", "INTEGER DEFAULT 0"),
+        ("pricing_trace_json", "TEXT"),
     ]
 
     for column_name, column_type in columns:
@@ -315,6 +317,16 @@ def apply_pricing(quote_id: int):
         total_parts = quote["total_parts"] or 0
         total_labour = quote["total_labour"] or 0
         total_misc = quote["total_misc"] or 0
+
+        imported_parts_total = total_parts
+        imported_labour_total = total_labour
+        imported_misc_total = total_misc
+        imported_total_cost = quote["total_cost"] or (
+            imported_parts_total
+            + imported_labour_total
+            + imported_misc_total
+        )
+
         total_hours = quote["total_hours"] or 0
         hours_per_year = quote["hours_per_year"] or 0
         labour_rate_input = quote["labour_rate"] or 0
@@ -337,6 +349,81 @@ def apply_pricing(quote_id: int):
         # Sinon, on conserve le total pièces importé.
         total_parts = dealer_parts_total
 
+        parts_rows = conn.execute(
+            """
+            SELECT
+                ql.part_number,
+                ql.description,
+                ql.quantity,
+                ql.unit_price AS imported_unit_price,
+                ql.total_price AS imported_total_price,
+                ql.discount_code,
+                ql.dealer_net_total,
+                ql.customer_price_total,
+                pc.price_excl_vat AS catalog_unit_price,
+                pc.product_group,
+                pc.source_file AS catalog_source
+            FROM quote_lines ql
+            LEFT JOIN price_catalog pc
+                ON TRIM(pc.part_no) = TRIM(ql.part_number)
+            WHERE ql.quote_id = ?
+            ORDER BY ql.id
+            """,
+            (quote_id,),
+        ).fetchall()
+
+        parts_trace = []
+
+        for row in parts_rows:
+            quantity = to_float(row["quantity"])
+            imported_unit_price = to_float(row["imported_unit_price"])
+            imported_total_price = to_float(row["imported_total_price"])
+            catalog_unit_price = to_float(row["catalog_unit_price"])
+            dealer_net_total = to_float(row["dealer_net_total"])
+            customer_price_total = to_float(row["customer_price_total"])
+
+            reference_total = imported_total_price
+            if reference_total <= 0 and quantity > 0 and imported_unit_price > 0:
+                reference_total = quantity * imported_unit_price
+
+            dealer_discount_percent = None
+            customer_discount_percent = None
+
+            if reference_total > 0:
+                dealer_discount_percent = (
+                    1 - dealer_net_total / reference_total
+                ) * 100
+                customer_discount_percent = (
+                    1 - customer_price_total / reference_total
+                ) * 100
+
+            margin_amount = customer_price_total - dealer_net_total
+            margin_percent = (
+                margin_amount / dealer_net_total * 100
+                if dealer_net_total > 0
+                else None
+            )
+
+            parts_trace.append(
+                {
+                    "part_number": row["part_number"] or "",
+                    "description": row["description"] or "",
+                    "quantity": quantity,
+                    "imported_unit_price": imported_unit_price,
+                    "imported_total_price": imported_total_price,
+                    "catalog_unit_price": catalog_unit_price,
+                    "discount_code": row["discount_code"] or "",
+                    "product_group": row["product_group"] or "",
+                    "catalog_source": row["catalog_source"] or "",
+                    "dealer_discount_percent": dealer_discount_percent,
+                    "dealer_net_total": dealer_net_total,
+                    "customer_discount_percent": customer_discount_percent,
+                    "customer_price_total": customer_price_total,
+                    "margin_amount": margin_amount,
+                    "margin_percent": margin_percent,
+                }
+            )
+
         selling_labour = apply_margin(total_labour, labour_margin)
         selling_misc = total_misc
 
@@ -351,6 +438,7 @@ def apply_pricing(quote_id: int):
         ).fetchall()
 
         additional_services_total = 0
+        services_trace = []
 
         included_service_ids = {
             str(row["service_id"] or "")
@@ -419,6 +507,32 @@ def apply_pricing(quote_id: int):
 
             additional_services_total += service_price_for_total
 
+            exclusion_reason = ""
+
+            if is_overview_imported_service(service):
+                exclusion_reason = (
+                    "Amount already included in imported parts, labour and misc."
+                )
+            elif (
+                imported_overview_2_2_present
+                and str(service["service_id"] or "") == "2,1"
+            ):
+                exclusion_reason = (
+                    "Neutralized to avoid duplicate maintenance parts "
+                    "with imported Volvo Overview service 2.2."
+                )
+
+            services_trace.append(
+                {
+                    "service_id": str(service["service_id"] or ""),
+                    "service_name": service["service_name"] or "",
+                    "source_excel": service["source_excel"] or "",
+                    "calculated_price": service_price,
+                    "amount_added_to_total": service_price_for_total,
+                    "exclusion_reason": exclusion_reason,
+                }
+            )
+
             conn.execute(
                 """
                 UPDATE quote_services
@@ -470,6 +584,100 @@ def apply_pricing(quote_id: int):
             if months:
                 selling_monthly = selling_total / months
 
+        indexation_trace = []
+        running_parts_factor = 1
+        running_labour_factor = 1
+
+        for year_number in range(1, contract_years + 1):
+            parts_rate = get_setting_float(
+                settings,
+                f"indexation_parts_year_{year_number}",
+                0,
+            )
+            labour_rate_index = get_setting_float(
+                settings,
+                f"indexation_labour_year_{year_number}",
+                0,
+            )
+
+            running_parts_factor *= 1 + parts_rate / 100
+            running_labour_factor *= 1 + labour_rate_index / 100
+
+            indexation_trace.append(
+                {
+                    "year": year_number,
+                    "parts_rate": parts_rate,
+                    "labour_rate": labour_rate_index,
+                    "parts_factor": running_parts_factor,
+                    "labour_factor": running_labour_factor,
+                }
+            )
+
+        imported_cost_per_hour = (
+            imported_total_cost / total_hours
+            if total_hours
+            else None
+        )
+
+        pricing_trace = {
+            "version": 1,
+            "quote_id": quote_id,
+            "currency": currency,
+            "import": {
+                "parts": imported_parts_total,
+                "labour": imported_labour_total,
+                "misc": imported_misc_total,
+                "total_cost": imported_total_cost,
+                "total_hours": total_hours,
+                "hours_per_year": hours_per_year,
+                "cost_per_hour": imported_cost_per_hour,
+            },
+            "parts": {
+                "dealer_total": dealer_parts_total,
+                "customer_total_before_indexation": selling_parts,
+                "indexed_customer_total": indexed_parts,
+                "dc_lines_used": dc_lines_used,
+                "factor": parts_factor,
+                "lines": parts_trace,
+            },
+            "labour": {
+                "imported_total": total_labour,
+                "margin_percent": labour_margin,
+                "customer_total_before_indexation": selling_labour,
+                "indexed_customer_total": indexed_labour,
+                "factor": labour_factor,
+            },
+            "services": {
+                "total_added": additional_services_total,
+                "lines": services_trace,
+            },
+            "fluids": {
+                "total": fluid_total,
+                "replace_overview": replace_overview_fluids,
+            },
+            "fees": {
+                "travel_fixed_setting": travel_fee_fixed,
+                "logistics_percent": logistics_fee,
+                "logistics_amount": logistics_fee_amount,
+                "admin_percent": admin_fee,
+                "admin_amount": admin_fee_amount,
+                "non_indexed_base": non_indexed_subtotal,
+            },
+            "indexation": indexation_trace,
+            "result": {
+                "contract_years": contract_years,
+                "selling_total": selling_total,
+                "selling_monthly": selling_monthly,
+                "selling_per_hour": selling_per_hour,
+                "cost_per_hour": imported_cost_per_hour,
+            },
+        }
+
+        pricing_trace_json = json.dumps(
+            pricing_trace,
+            ensure_ascii=False,
+        )
+
         conn.execute(
             """
             UPDATE quotes
@@ -477,7 +685,8 @@ def apply_pricing(quote_id: int):
                 fluid_total = ?,
                 selling_total = ?,
                 selling_monthly = ?,
-                selling_per_hour = ?
+                selling_per_hour = ?,
+                pricing_trace_json = ?
             WHERE id = ?
             """,
             (
@@ -485,6 +694,7 @@ def apply_pricing(quote_id: int):
                 selling_total,
                 selling_monthly,
                 selling_per_hour,
+                pricing_trace_json,
                 quote_id,
             ),
         )

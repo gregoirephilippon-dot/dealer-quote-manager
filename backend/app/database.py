@@ -126,7 +126,6 @@ def init_db():
             """
         )
 
-    print(f"Base initialisee : {DB_PATH}")
 
 
 if __name__ == "__main__":
