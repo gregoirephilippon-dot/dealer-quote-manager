@@ -6,12 +6,12 @@ PACKAGE_PRESETS = {
     "base_care": {
         "label": "Base Care",
         "description": "Basic + campagne + maintenance parts & labour.",
-        "services": ["1,1", "1,2", "1,3", "1,4", "2,1"],
+        "services": ["1,1", "1,2", "1,3", "1,4", "2,1", "3,1", "3,3_1", "3,3_2", "3,3_3"],
     },
     "comfort_care": {
         "label": "Comfort Care",
         "description": "Base Care + diagnostics + analyses fluides.",
-        "services": ["1,1", "1,2", "1,3", "2,2", "3,1", "3,2", "3,3_1", "3,3_2", "3,3_3"],
+        "services": ["1,1", "1,2", "1,3", "2,2", "3,1", "3,2", "3,3_1", "3,3_2", "3,3_3", "4,1", "4,2"],
     },
     "advanced_care": {
         "label": "Advanced Care",
