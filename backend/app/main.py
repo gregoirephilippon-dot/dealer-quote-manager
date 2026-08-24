@@ -13,6 +13,10 @@ from service_catalog import SERVICE_CATALOG
 import app_config as config
 from service_2_2_detail_calculation import apply_service_2_2_detail_calculation
 from pricing_trace_view import get_pricing_result_html
+from fluid_catalog import (
+    search_engine_oil_catalog_items,
+    search_engine_coolant_catalog_items,
+)
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -1870,14 +1874,23 @@ def archives_page(request: Request):
 
 def ensure_quote_fluid_columns():
     columns = [
+        ("oil_catalog_part_no", "TEXT"),
         ("oil_price_per_liter", "REAL DEFAULT 0"),
         ("oil_service_count", "REAL DEFAULT 0"),
         ("oil_quantity_per_service", "REAL DEFAULT 0"),
+        ("oil_packaging_mode", "TEXT DEFAULT 'consumed'"),
+        ("oil_packaging_liters", "REAL DEFAULT 0"),
+        ("coolant_catalog_part_no", "TEXT"),
         ("coolant_price_per_liter", "REAL DEFAULT 0"),
         ("coolant_service_count", "REAL DEFAULT 0"),
         ("coolant_quantity_per_service", "REAL DEFAULT 0"),
+        ("coolant_concentrate_percent", "REAL DEFAULT 100"),
+        ("coolant_packaging_mode", "TEXT DEFAULT 'consumed'"),
+        ("coolant_packaging_liters", "REAL DEFAULT 0"),
         ("fluid_total", "REAL DEFAULT 0"),
         ("replace_overview_fluids", "INTEGER DEFAULT 0"),
+        ("replace_imported_oil", "INTEGER DEFAULT 0"),
+        ("replace_imported_coolant", "INTEGER DEFAULT 0"),
         ("pricing_trace_json", "TEXT"),
     ]
 
@@ -1976,6 +1989,150 @@ def quote_inputs_page(quote_id: int, request: Request):
         import_control_html = get_import_control_html(conn, quote)
         pricing_result_html = get_pricing_result_html(quote)
 
+        imported_oil_row = conn.execute(
+            """
+            SELECT id, quantity, description, part_number
+            FROM quote_lines
+            WHERE quote_id = ?
+              AND COALESCE(quantity, 0) > 0
+              AND (
+                    lower(trim(COALESCE(description, ''))) = 'engine oil'
+                 OR TRIM(COALESCE(part_number, '')) IN (
+                        '24567220', '24567221', '24567222', '54419768'
+                    )
+              )
+            LIMIT 1
+            """,
+            (quote_id,),
+        ).fetchone()
+
+        imported_coolant_row = conn.execute(
+            """
+            SELECT id, quantity, description, part_number
+            FROM quote_lines
+            WHERE quote_id = ?
+              AND COALESCE(quantity, 0) > 0
+              AND (
+                    lower(trim(COALESCE(description, ''))) = 'volvo coolant ready mixed'
+                 OR TRIM(COALESCE(part_number, '')) IN (
+                        '22567233', '22567259', '22567215',
+                        '24712786', '24712788', '24712790',
+                        '24712783', '22567261', '22567217'
+                    )
+              )
+            LIMIT 1
+            """,
+            (quote_id,),
+        ).fetchone()
+
+    imported_oil = imported_oil_row is not None
+    imported_coolant = imported_coolant_row is not None
+
+    replace_imported_oil = bool(quote["replace_imported_oil"])
+    replace_imported_coolant = bool(quote["replace_imported_coolant"])
+
+    oil_locked = imported_oil and not replace_imported_oil
+    coolant_locked = imported_coolant and not replace_imported_coolant
+
+    oil_readonly = "readonly" if oil_locked else ""
+    coolant_readonly = "readonly" if coolant_locked else ""
+
+    oil_style = (
+        "opacity:0.55; background:#f1f1f1;"
+        if oil_locked else ""
+    )
+    coolant_style = (
+        "opacity:0.55; background:#f1f1f1;"
+        if coolant_locked else ""
+    )
+
+    oil_status = (
+        f"Huile importee detectee : {float(imported_oil_row['quantity'] or 0):g} unite(s)."
+        if imported_oil
+        else "Aucune huile importee detectee."
+    )
+
+    coolant_status = (
+        f"Coolant importe detecte : {float(imported_coolant_row['quantity'] or 0):g} unite(s)."
+        if imported_coolant
+        else "Aucun coolant importe detecte."
+    )
+
+    oil_catalog_items = [
+        item
+        for item in search_engine_oil_catalog_items()
+        if float(item.get("suggested_packaging_liters") or 0) > 0
+    ]
+
+    coolant_catalog_items = [
+        item
+        for item in search_engine_coolant_catalog_items()
+        if float(item.get("suggested_packaging_liters") or 0) > 0
+    ]
+
+    selected_oil_part = str(quote["oil_catalog_part_no"] or "")
+    selected_coolant_part = str(quote["coolant_catalog_part_no"] or "")
+
+    oil_packaging_liters = 0
+    for item in oil_catalog_items:
+        if str(item.get("part_no") or "") == selected_oil_part:
+            oil_packaging_liters = float(
+                item.get("suggested_packaging_liters") or 0
+            )
+            break
+
+    coolant_packaging_liters = 0
+    for item in coolant_catalog_items:
+        if str(item.get("part_no") or "") == selected_coolant_part:
+            coolant_packaging_liters = float(
+                item.get("suggested_packaging_liters") or 0
+            )
+            break
+
+    oil_options = [
+        '<option value="">-- Choisir une reference huile --</option>'
+    ]
+
+    for item in oil_catalog_items:
+        part_no = str(item.get("part_no") or "")
+        liters = float(item.get("suggested_packaging_liters") or 0)
+        catalog_price = float(item.get("price_excl_vat") or 0)
+        price_liter = catalog_price / liters if liters else 0
+        selected = "selected" if part_no == selected_oil_part else ""
+
+        oil_options.append(
+            f'<option value="{part_no}" '
+            f'data-price-liter="{price_liter:.6f}" {selected}>'
+            f'{part_no} | {liters:g} L | '
+            f'{catalog_price:.2f} EUR | {price_liter:.2f} EUR/L'
+            f'</option>'
+        )
+
+    coolant_options = [
+        '<option value="">-- Choisir une reference coolant --</option>'
+    ]
+
+    for item in coolant_catalog_items:
+        part_no = str(item.get("part_no") or "")
+        liters = float(item.get("suggested_packaging_liters") or 0)
+        catalog_price = float(item.get("price_excl_vat") or 0)
+        price_liter = catalog_price / liters if liters else 0
+        coolant_type = str(item.get("coolant_type_label") or "").strip()
+        selected = "selected" if part_no == selected_coolant_part else ""
+
+        label = coolant_type or "Type non identifie"
+
+        coolant_options.append(
+            f'<option value="{part_no}" '
+            f'data-price-liter="{price_liter:.6f}" {selected}>'
+            f'{part_no} | {label} | {liters:g} L | '
+            f'{catalog_price:.2f} EUR | {price_liter:.2f} EUR/L'
+            f'</option>'
+        )
+
+    oil_catalog_options_html = "".join(oil_options)
+    coolant_catalog_options_html = "".join(coolant_options)
+
     contract_years = ""
     if quote["total_hours"] and quote["hours_per_year"]:
         contract_years = quote["total_hours"] / quote["hours_per_year"]
@@ -2009,28 +2166,252 @@ def quote_inputs_page(quote_id: int, request: Request):
             <label>Coût total main-d’œuvre<input type="number" step="0.01" name="total_labour" value="{fmt_number(quote['total_labour'])}"></label>
             <label>Coût divers<input type="number" step="0.01" name="total_misc" value="{fmt_number(quote['total_misc'])}"></label>
 
-            <h2>Huile / coolant</h2>
-            <div class="grid">
-                <label>Prix huile / litre<input type="number" step="0.01" name="oil_price_per_liter" value="{fmt_number(quote['oil_price_per_liter'])}"></label>
-                <label>Nb services huile<input type="number" step="0.01" name="oil_service_count" value="{fmt_number(quote['oil_service_count'])}"></label>
-                <label>Litres huile / service<input type="number" step="0.01" name="oil_quantity_per_service" value="{fmt_number(quote['oil_quantity_per_service'])}"></label>
+            <input
+                type="hidden"
+                name="replace_overview_fluids"
+                value="{"1" if quote["replace_overview_fluids"] else ""}"
+            >
 
-                <label>Prix coolant / litre<input type="number" step="0.01" name="coolant_price_per_liter" value="{fmt_number(quote['coolant_price_per_liter'])}"></label>
-                <label>Nb services coolant<input type="number" step="0.01" name="coolant_service_count" value="{fmt_number(quote['coolant_service_count'])}"></label>
-                <label>Litres coolant / service<input type="number" step="0.01" name="coolant_quantity_per_service" value="{fmt_number(quote['coolant_quantity_per_service'])}"></label>
+            <h2 style="
+                grid-column:1 / -1;
+                margin:22px 0 4px 0;
+                padding-top:18px;
+                border-top:1px solid #d8dee6;
+            ">Fluides de maintenance</h2>
 
-                <label>Total huile + coolant<input type="number" step="0.01" value="{fmt_number(quote['fluid_total'])}" readonly></label>
+            <div class="card" style="
+                {oil_style}
+                grid-column:1 / -1;
+                padding:20px;
+                margin:0;
+                border:1px solid #d8dee6;
+                border-radius:10px;
+            ">
+                <h3 style="margin-top:0; margin-bottom:8px;">Huile moteur</h3>
+
+                <p class="muted">
+                    {oil_status}
+                </p>
+
+                {"<p class='muted' style='margin:4px 0 10px 0;'><strong>Verrouille :</strong> huile deja presente dans le fichier Volvo.</p>" if oil_locked else ""}
+
+                <label style="display:flex; gap:8px; align-items:center; margin-bottom:12px; opacity:1;">
+                    <input
+                        type="checkbox"
+                        name="replace_imported_oil"
+                        {"checked" if replace_imported_oil else ""}
+                        {"disabled" if not imported_oil else ""}
+                        onchange="this.form.submit()"
+                    >
+                    <span><strong>Neutraliser l'huile importee et utiliser le calcul logiciel</strong></span>
+                </label>
+
+                <div class="grid">
+                    <label style="grid-column:1 / -1;">
+                        Reference huile Volvo
+                        <input type="hidden" name="oil_packaging_liters" value="{oil_packaging_liters:g}">
+                        <select
+                            id="oil_catalog_part_no"
+                            name="oil_catalog_part_no"
+                            {"disabled" if oil_locked else ""}
+                            onchange="
+                                const opt = this.options[this.selectedIndex];
+                                document.getElementById('oil_price_per_liter').value =
+                                    opt.dataset.priceLiter || '';
+                                this.form.submit();
+                            "
+                        >
+                            {oil_catalog_options_html}
+                        </select>
+                    </label>
+
+                    <label>
+                        Prix huile / litre
+                        <input
+                            type="number"
+                            step="0.01"
+                            id="oil_price_per_liter"
+                            name="oil_price_per_liter"
+                            value="{fmt_number(quote['oil_price_per_liter'])}"
+                            {oil_readonly}
+                        >
+                    </label>
+
+                    <label>
+                        Nb services huile
+                        <input
+                            type="number"
+                            step="0.01"
+                            name="oil_service_count"
+                            value="{fmt_number(quote['oil_service_count'])}"
+                            {oil_readonly}
+                        >
+                    </label>
+
+                    <label>
+                        Mode facturation huile
+                        <select name="oil_packaging_mode" {oil_readonly} onchange="this.form.submit();">
+                            <option value="consumed" {"selected" if (quote["oil_packaging_mode"] or "consumed") == "consumed" else ""}>
+                                Litres consommes
+                            </option>
+                            <option value="package" {"selected" if quote["oil_packaging_mode"] == "package" else ""}>
+                                Conditionnement complet
+                            </option>
+                        </select>
+                        <small class="muted">
+                            Conditionnement selectionne : {oil_packaging_liters:g} L
+                        </small>
+                    </label>
+
+                    <label>
+                        Litres huile / service
+                        <input
+                            type="number"
+                            step="0.01"
+                            name="oil_quantity_per_service"
+                            value="{fmt_number(quote['oil_quantity_per_service'])}"
+                            {oil_readonly}
+                        >
+                    </label>
+                </div>
             </div>
 
-            <label style="display:flex; gap:8px; align-items:center; margin-top:10px;">
-                <input type="checkbox" name="replace_overview_fluids" {"checked" if quote["replace_overview_fluids"] else ""}>
-                <span><strong>Remplacer huile/coolant inclus dans l’Overview par le calcul logiciel</strong></span>
-            </label>
-            <p class="muted">
-                Si le service 2,2 vient de l’Overview, le total Overview est conservé comme base calculée.
-                Cette option sert à tracer que la partie huile/coolant est pilotée par le calcul logiciel,
-                sans double comptage.
-            </p>
+            <div class="card" style="
+                {coolant_style}
+                grid-column:1 / -1;
+                padding:20px;
+                margin:0;
+                border:1px solid #d8dee6;
+                border-radius:10px;
+            ">
+                <h3 style="margin-top:0; margin-bottom:8px;">Coolant / liquide de refroidissement</h3>
+
+                <p class="muted">
+                    {coolant_status}
+                </p>
+
+                {"<p class='muted' style='margin:4px 0 10px 0;'><strong>Verrouille :</strong> coolant deja present dans le fichier Volvo.</p>" if coolant_locked else ""}
+
+                <label style="display:flex; gap:8px; align-items:center; margin-bottom:12px; opacity:1;">
+                    <input
+                        type="checkbox"
+                        name="replace_imported_coolant"
+                        {"checked" if replace_imported_coolant else ""}
+                        {"disabled" if not imported_coolant else ""}
+                        onchange="this.form.submit()"
+                    >
+                    <span><strong>Neutraliser le coolant importe et utiliser le calcul logiciel</strong></span>
+                </label>
+
+                <div class="grid">
+                    <label style="grid-column:1 / -1;">
+                        Reference coolant Volvo
+                        <input type="hidden" name="coolant_packaging_liters" value="{coolant_packaging_liters:g}">
+                        <select
+                            id="coolant_catalog_part_no"
+                            name="coolant_catalog_part_no"
+                            {"disabled" if coolant_locked else ""}
+                            onchange="
+                                const opt = this.options[this.selectedIndex];
+                                document.getElementById('coolant_price_per_liter').value =
+                                    opt.dataset.priceLiter || '';
+                                this.form.submit();
+                            "
+                        >
+                            {coolant_catalog_options_html}
+                        </select>
+                    </label>
+
+                    <label>
+                        Prix coolant / litre
+                        <input
+                            type="number"
+                            step="0.01"
+                            id="coolant_price_per_liter"
+                            name="coolant_price_per_liter"
+                            value="{fmt_number(quote['coolant_price_per_liter'])}"
+                            {coolant_readonly}
+                        >
+                    </label>
+
+                    <label>
+                        Nb services coolant
+                        <input
+                            type="number"
+                            step="0.01"
+                            name="coolant_service_count"
+                            value="{fmt_number(quote['coolant_service_count'])}"
+                            {coolant_readonly}
+                        >
+                    </label>
+
+                    <label>
+                        Mode facturation coolant
+                        <select name="coolant_packaging_mode" {coolant_readonly} onchange="this.form.submit();">
+                            <option value="consumed" {"selected" if (quote["coolant_packaging_mode"] or "consumed") == "consumed" else ""}>
+                                Litres consommes
+                            </option>
+                            <option value="package" {"selected" if quote["coolant_packaging_mode"] == "package" else ""}>
+                                Conditionnement complet
+                            </option>
+                        </select>
+                        <small class="muted">
+                            Conditionnement selectionne : {coolant_packaging_liters:g} L
+                        </small>
+                    </label>
+
+                    <label>
+                        Litres circuit coolant / service
+                        <input
+                            type="number"
+                            step="0.01"
+                            name="coolant_quantity_per_service"
+                            value="{fmt_number(quote['coolant_quantity_per_service'])}"
+                            {coolant_readonly}
+                        >
+                    </label>
+
+                    <label>
+                        Part de concentre (%)
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            name="coolant_concentrate_percent"
+                            value="{fmt_number(quote['coolant_concentrate_percent'])}"
+                            {coolant_readonly}
+                        >
+                        <small class="muted">
+                            Utilise uniquement pour une reference concentree.
+                            Ready mixed = 100 % du volume circuit.
+                        </small>
+                    </label>
+                </div>
+            </div>
+
+            <div class="card" style="
+                grid-column:1 / -1;
+                margin:0;
+                padding:16px 20px;
+                border:1px solid #d8dee6;
+                border-radius:10px;
+            ">
+                <label style="max-width:360px;">
+                    Total huile + coolant logiciel
+                    <input
+                        type="number"
+                        step="0.01"
+                        value="{fmt_number(quote['fluid_total'])}"
+                        readonly
+                    >
+                </label>
+
+                <p class="muted">
+                    Le rattachement financier reste provisoirement inchange.
+                    Le prochain controle determinera automatiquement si chaque fluide doit etre rattache au service 2.1 ou 2.2.
+                </p>
+            </div>
             <label>Devise<input type="text" name="currency" value="{quote['currency'] or 'EUR'}"></label>
         </div>
         <button type="submit">Enregistrer données contrat + recalculer</button>
@@ -2060,13 +2441,22 @@ def save_quote_inputs(
     total_parts: float = Form(0),
     total_labour: float = Form(0),
     total_misc: float = Form(0),
+    oil_catalog_part_no: str = Form(""),
     oil_price_per_liter: float = Form(0),
     oil_service_count: float = Form(0),
     oil_quantity_per_service: float = Form(0),
+    oil_packaging_mode: str = Form('consumed'),
+    oil_packaging_liters: float = Form(0),
+    coolant_catalog_part_no: str = Form(""),
     coolant_price_per_liter: float = Form(0),
     coolant_service_count: float = Form(0),
     coolant_quantity_per_service: float = Form(0),
+    coolant_concentrate_percent: float = Form(100),
+    coolant_packaging_mode: str = Form('consumed'),
+    coolant_packaging_liters: float = Form(0),
     replace_overview_fluids: str | None = Form(None),
+    replace_imported_oil: str | None = Form(None),
+    replace_imported_coolant: str | None = Form(None),
     currency: str = Form("EUR"),
 ):
     login_response = require_login(request)
@@ -2083,7 +2473,16 @@ def save_quote_inputs(
 
     fluid_total = (
         (oil_price_per_liter or 0) * (oil_service_count or 0) * (oil_quantity_per_service or 0)
-        + (coolant_price_per_liter or 0) * (coolant_service_count or 0) * (coolant_quantity_per_service or 0)
+        + (
+            (coolant_price_per_liter or 0)
+            * (coolant_service_count or 0)
+            * (coolant_quantity_per_service or 0)
+            * (
+                max(0, min(100, coolant_concentrate_percent or 100)) / 100
+                if (coolant_catalog_part_no or "").strip() in {"22567215", "22567217"}
+                else 1
+            )
+        )
     )
 
     total_cost = (total_parts or 0) + (total_labour or 0) + (total_misc or 0)
@@ -2093,19 +2492,37 @@ def save_quote_inputs(
             UPDATE quotes
             SET customer_name=?, product_designation=?, engine_serial_number=?, product_name=?, country=?, status=?,
                 total_hours=?, hours_per_year=?, labour_rate=?, total_parts=?, total_labour=?, total_misc=?,
+                oil_catalog_part_no=?,
                 oil_price_per_liter=?, oil_service_count=?, oil_quantity_per_service=?,
+                oil_packaging_mode=?,
+                oil_packaging_liters=?,
+                coolant_catalog_part_no=?,
                 coolant_price_per_liter=?, coolant_service_count=?, coolant_quantity_per_service=?,
+                coolant_concentrate_percent=?,
+                coolant_packaging_mode=?,
+                coolant_packaging_liters=?,
                 fluid_total=?,
                 replace_overview_fluids=?,
+                replace_imported_oil=?,
+                replace_imported_coolant=?,
                 total_cost=?, currency=?
             WHERE id=? AND company_id=?
             """,
             (customer_name.strip(), product_designation.strip(), engine_serial_number.strip(), product_name.strip(), country.strip(), status,
              total_hours, hours_per_year, labour_rate, total_parts, total_labour, total_misc,
+             oil_catalog_part_no.strip() or None,
              oil_price_per_liter, oil_service_count, oil_quantity_per_service,
+             oil_packaging_mode.strip() or 'consumed',
+             oil_packaging_liters,
+             coolant_catalog_part_no.strip() or None,
              coolant_price_per_liter, coolant_service_count, coolant_quantity_per_service,
+             coolant_concentrate_percent,
+             coolant_packaging_mode.strip() or 'consumed',
+             coolant_packaging_liters,
              fluid_total,
              1 if replace_overview_fluids else 0,
+             1 if replace_imported_oil else 0,
+             1 if replace_imported_coolant else 0,
              total_cost, currency.strip() or "EUR", quote_id, get_active_company_id_for_request(request)),
         )
         conn.commit()

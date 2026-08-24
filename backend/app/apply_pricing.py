@@ -1,4 +1,5 @@
 import json
+import math
 import sys
 from database import get_connection, init_db
 from settings import get_settings_dict
@@ -236,14 +237,23 @@ def calculate_parts_totals_with_dc(conn, quote_id: int, fallback_total_parts: fl
 
 def ensure_quote_fluid_columns(conn):
     columns = [
+        ("oil_catalog_part_no", "TEXT"),
         ("oil_price_per_liter", "REAL DEFAULT 0"),
         ("oil_service_count", "REAL DEFAULT 0"),
         ("oil_quantity_per_service", "REAL DEFAULT 0"),
+        ("oil_packaging_mode", "TEXT DEFAULT 'consumed'"),
+        ("oil_packaging_liters", "REAL DEFAULT 0"),
+        ("coolant_catalog_part_no", "TEXT"),
         ("coolant_price_per_liter", "REAL DEFAULT 0"),
         ("coolant_service_count", "REAL DEFAULT 0"),
         ("coolant_quantity_per_service", "REAL DEFAULT 0"),
+        ("coolant_concentrate_percent", "REAL DEFAULT 100"),
+        ("coolant_packaging_mode", "TEXT DEFAULT 'consumed'"),
+        ("coolant_packaging_liters", "REAL DEFAULT 0"),
         ("fluid_total", "REAL DEFAULT 0"),
         ("replace_overview_fluids", "INTEGER DEFAULT 0"),
+        ("replace_imported_oil", "INTEGER DEFAULT 0"),
+        ("replace_imported_coolant", "INTEGER DEFAULT 0"),
         ("pricing_trace_json", "TEXT"),
     ]
 
@@ -264,15 +274,186 @@ def quote_value(row, key, default=0):
     return default
 
 
-def calculate_fluid_total_from_quote(quote):
-    return (
-        to_float(quote_value(quote, "oil_price_per_liter", 0))
-        * to_float(quote_value(quote, "oil_service_count", 0))
-        * to_float(quote_value(quote, "oil_quantity_per_service", 0))
-        + to_float(quote_value(quote, "coolant_price_per_liter", 0))
-        * to_float(quote_value(quote, "coolant_service_count", 0))
-        * to_float(quote_value(quote, "coolant_quantity_per_service", 0))
+def calculate_fluid_totals_from_quote(quote):
+    oil_price_per_liter = to_float(
+        quote_value(quote, "oil_price_per_liter", 0)
     )
+    oil_service_count = to_float(
+        quote_value(quote, "oil_service_count", 0)
+    )
+    oil_quantity_per_service = to_float(
+        quote_value(quote, "oil_quantity_per_service", 0)
+    )
+    oil_packaging_liters = to_float(
+        quote_value(quote, "oil_packaging_liters", 0)
+    )
+    oil_packaging_mode = str(
+        quote_value(quote, "oil_packaging_mode", "consumed") or "consumed"
+    ).strip().lower()
+
+    oil_billable_liters_per_service = oil_quantity_per_service
+
+    if (
+        oil_packaging_mode == "package"
+        and oil_packaging_liters > 0
+        and oil_quantity_per_service > 0
+    ):
+        oil_billable_liters_per_service = (
+            math.ceil(oil_quantity_per_service / oil_packaging_liters)
+            * oil_packaging_liters
+        )
+
+    oil_total = (
+        oil_price_per_liter
+        * oil_service_count
+        * oil_billable_liters_per_service
+    )
+
+    coolant_part_no = str(
+        quote_value(quote, "coolant_catalog_part_no", "") or ""
+    ).strip()
+
+    coolant_is_concentrate = coolant_part_no in {
+        "22567215",
+        "22567217",
+    }
+
+    coolant_concentrate_percent = to_float(
+        quote_value(quote, "coolant_concentrate_percent", 100)
+    )
+
+    # Compatibilite avec les devis existants :
+    # vide ou <= 0 conserve l'ancien calcul a 100 %.
+    if coolant_concentrate_percent <= 0:
+        coolant_concentrate_percent = 100
+
+    if coolant_concentrate_percent > 100:
+        coolant_concentrate_percent = 100
+
+    coolant_volume_factor = (
+        coolant_concentrate_percent / 100
+        if coolant_is_concentrate
+        else 1
+    )
+
+    coolant_price_per_liter = to_float(
+        quote_value(quote, "coolant_price_per_liter", 0)
+    )
+    coolant_service_count = to_float(
+        quote_value(quote, "coolant_service_count", 0)
+    )
+    coolant_quantity_per_service = to_float(
+        quote_value(quote, "coolant_quantity_per_service", 0)
+    )
+    coolant_packaging_liters = to_float(
+        quote_value(quote, "coolant_packaging_liters", 0)
+    )
+    coolant_packaging_mode = str(
+        quote_value(quote, "coolant_packaging_mode", "consumed") or "consumed"
+    ).strip().lower()
+
+    coolant_required_liters_per_service = (
+        coolant_quantity_per_service * coolant_volume_factor
+    )
+
+    coolant_billable_liters_per_service = coolant_required_liters_per_service
+
+    if (
+        coolant_packaging_mode == "package"
+        and coolant_packaging_liters > 0
+        and coolant_required_liters_per_service > 0
+    ):
+        coolant_billable_liters_per_service = (
+            math.ceil(
+                coolant_required_liters_per_service / coolant_packaging_liters
+            )
+            * coolant_packaging_liters
+        )
+
+    coolant_total = (
+        coolant_price_per_liter
+        * coolant_service_count
+        * coolant_billable_liters_per_service
+    )
+
+    return oil_total, coolant_total
+
+
+def calculate_fluid_total_from_quote(quote):
+    oil_total, coolant_total = calculate_fluid_totals_from_quote(quote)
+    return oil_total + coolant_total
+
+
+
+def calculate_catalog_fluid_prices(conn, part_no, catalog_total):
+    """
+    Applique aux fluides la meme logique DC que les pieces :
+    - dealer net = catalogue x (1 - remise dealer)
+    - client = catalogue x (1 - remise client)
+
+    Si aucune reference catalogue exploitable n'est presente,
+    le montant saisi/calcul? reste utilise sans remise.
+    """
+    catalog_total = to_float(catalog_total)
+    part_no = str(part_no or "").strip()
+
+    result = {
+        "part_no": part_no,
+        "discount_code": None,
+        "catalog_total": catalog_total,
+        "dealer_discount": 0.0,
+        "customer_discount": 0.0,
+        "dealer_total": catalog_total,
+        "customer_total": catalog_total,
+    }
+
+    if not part_no or catalog_total <= 0:
+        return result
+
+    row = conn.execute(
+        """
+        SELECT discount_code
+        FROM price_catalog
+        WHERE TRIM(part_no) = ?
+        LIMIT 1
+        """,
+        (part_no,),
+    ).fetchone()
+
+    if not row:
+        return result
+
+    dc = normalize_discount_code(row["discount_code"])
+
+    if dc is None:
+        return result
+
+    discount_row = conn.execute(
+        """
+        SELECT dealer_discount, customer_type_discount
+        FROM dealer_discount_codes
+        WHERE dc = ?
+        """,
+        (dc,),
+    ).fetchone()
+
+    if not discount_row:
+        return result
+
+    dealer_discount = to_float(discount_row["dealer_discount"])
+    customer_discount = to_float(discount_row["customer_type_discount"])
+
+    result.update(
+        {
+            "discount_code": dc,
+            "dealer_discount": dealer_discount,
+            "customer_discount": customer_discount,
+            "dealer_total": catalog_total * (1 - dealer_discount),
+            "customer_total": catalog_total * (1 - customer_discount),
+        }
+    )
+
+    return result
 
 
 def apply_pricing(quote_id: int):
@@ -292,14 +473,23 @@ def apply_pricing(quote_id: int):
                 total_hours,
                 hours_per_year,
                 labour_rate,
+                oil_catalog_part_no,
                 oil_price_per_liter,
                 oil_service_count,
                 oil_quantity_per_service,
+                oil_packaging_mode,
+                oil_packaging_liters,
+                coolant_catalog_part_no,
                 coolant_price_per_liter,
                 coolant_service_count,
                 coolant_quantity_per_service,
+                coolant_concentrate_percent,
+                coolant_packaging_mode,
+                coolant_packaging_liters,
                 fluid_total,
-                replace_overview_fluids
+                replace_overview_fluids,
+                replace_imported_oil,
+                replace_imported_coolant
             FROM quotes
             WHERE id = ?
             """,
@@ -330,8 +520,127 @@ def apply_pricing(quote_id: int):
         total_hours = quote["total_hours"] or 0
         hours_per_year = quote["hours_per_year"] or 0
         labour_rate_input = quote["labour_rate"] or 0
-        fluid_total = calculate_fluid_total_from_quote(quote)
-        replace_overview_fluids = bool(quote_value(quote, "replace_overview_fluids", 0))
+        oil_calculated_total, coolant_calculated_total = calculate_fluid_totals_from_quote(quote)
+
+        coolant_part_no = str(
+            quote_value(quote, "coolant_catalog_part_no", "") or ""
+        ).strip()
+
+        coolant_is_concentrate = coolant_part_no in {
+            "22567215",
+            "22567217",
+        }
+
+        coolant_concentrate_percent = to_float(
+            quote_value(quote, "coolant_concentrate_percent", 100)
+        )
+
+        if coolant_concentrate_percent <= 0:
+            coolant_concentrate_percent = 100
+
+        if coolant_concentrate_percent > 100:
+            coolant_concentrate_percent = 100
+
+        coolant_volume_factor = (
+            coolant_concentrate_percent / 100
+            if coolant_is_concentrate
+            else 1
+        )
+
+        replace_overview_fluids = bool(
+            quote_value(quote, "replace_overview_fluids", 0)
+        )
+        replace_imported_oil = bool(
+            quote_value(quote, "replace_imported_oil", 0)
+        )
+        replace_imported_coolant = bool(
+            quote_value(quote, "replace_imported_coolant", 0)
+        )
+
+        imported_oil_present = conn.execute(
+            """
+            SELECT 1
+            FROM quote_lines
+            WHERE quote_id = ?
+              AND COALESCE(quantity, 0) > 0
+              AND (
+                    lower(trim(COALESCE(description, ''))) = 'engine oil'
+                 OR TRIM(COALESCE(part_number, '')) IN (
+                        '24567220', '24567221', '24567222', '54419768'
+                    )
+              )
+            LIMIT 1
+            """,
+            (quote_id,),
+        ).fetchone() is not None
+
+        imported_coolant_present = conn.execute(
+            """
+            SELECT 1
+            FROM quote_lines
+            WHERE quote_id = ?
+              AND COALESCE(quantity, 0) > 0
+              AND (
+                    lower(trim(COALESCE(description, ''))) = 'volvo coolant ready mixed'
+                 OR TRIM(COALESCE(part_number, '')) IN (
+                        '22567233', '22567259', '22567215',
+                        '24712786', '24712788', '24712790',
+                        '24712783', '22567261', '22567217'
+                    )
+              )
+            LIMIT 1
+            """,
+            (quote_id,),
+        ).fetchone() is not None
+
+        oil_software_active = (
+            not imported_oil_present
+            or replace_imported_oil
+        )
+
+        coolant_software_active = (
+            not imported_coolant_present
+            or replace_imported_coolant
+        )
+
+        oil_catalog_pricing = calculate_catalog_fluid_prices(
+            conn,
+            quote_value(quote, "oil_catalog_part_no", ""),
+            oil_calculated_total,
+        )
+
+        coolant_catalog_pricing = calculate_catalog_fluid_prices(
+            conn,
+            quote_value(quote, "coolant_catalog_part_no", ""),
+            coolant_calculated_total,
+        )
+
+        oil_dealer_total = (
+            oil_catalog_pricing["dealer_total"]
+            if oil_software_active
+            else 0
+        )
+
+        coolant_dealer_total = (
+            coolant_catalog_pricing["dealer_total"]
+            if coolant_software_active
+            else 0
+        )
+
+        oil_total = (
+            oil_catalog_pricing["customer_total"]
+            if oil_software_active
+            else 0
+        )
+
+        coolant_total = (
+            coolant_catalog_pricing["customer_total"]
+            if coolant_software_active
+            else 0
+        )
+
+        fluid_dealer_total = round(oil_dealer_total + coolant_dealer_total, 2)
+        fluid_total = round(oil_total + coolant_total, 2)
 
         labour_margin = settings.get("labour_margin_percent", 0)
         admin_fee = settings.get("admin_fee_percent", 0)
@@ -459,14 +768,15 @@ def apply_pricing(quote_id: int):
             for row in included_services
         )
 
-        for service in included_services:
-            fluid_service_id = None
+        fluid_service_id = None
 
-            if fluid_total > 0:
-                if "2,2" in included_service_ids:
-                    fluid_service_id = "2,2"
-                elif "2,1" in included_service_ids:
-                    fluid_service_id = "2,1"
+        if fluid_total > 0:
+            if "2,2" in included_service_ids:
+                fluid_service_id = "2,2"
+            elif "2,1" in included_service_ids:
+                fluid_service_id = "2,1"
+
+        for service in included_services:
 
             if is_overview_imported_service(service):
                 # Montant déjà calculé dans l'Overview importé.
@@ -475,15 +785,13 @@ def apply_pricing(quote_id: int):
             else:
                 service_price = calculate_service_price(service, labour_rate_input, travel_fee_fixed)
 
-            if fluid_service_id and str(service["service_id"] or "") == fluid_service_id:
-                if is_overview_imported_service(service):
-                    # L'Overview est déjà un total calculé.
-                    # Si l'option est cochée, on trace que l'huile/coolant est remplacé
-                    # par le calcul logiciel, sans ajouter une deuxième fois le montant.
-                    if replace_overview_fluids and fluid_total > 0:
-                        service_price = max(service_price - fluid_total, 0) + fluid_total
-                else:
-                    service_price += fluid_total
+            is_fluid_target = (
+                fluid_service_id
+                and str(service["service_id"] or "") == fluid_service_id
+            )
+
+            if is_fluid_target and not is_overview_imported_service(service):
+                service_price += fluid_total
 
             # Anti-doublon import Volvo / Overview :
             # un service importé sert à afficher le périmètre inclus,
@@ -493,7 +801,11 @@ def apply_pricing(quote_id: int):
             service_price_for_total = service_price
 
             if is_overview_imported_service(service):
-                service_price_for_total = 0
+                service_price_for_total = (
+                    fluid_total
+                    if is_fluid_target
+                    else 0
+                )
 
             # Anti-doublon 2.1 / 2.2 :
             # si le 2.2 importe Volvo/Overview est deja present,
@@ -653,7 +965,42 @@ def apply_pricing(quote_id: int):
             },
             "fluids": {
                 "total": fluid_total,
+                "service_id": fluid_service_id,
                 "replace_overview": replace_overview_fluids,
+                "oil": {
+                    "part_no": quote_value(quote, "oil_catalog_part_no", ""),
+                    "calculated_total": oil_calculated_total,
+                    "catalog_total": oil_catalog_pricing["catalog_total"],
+                    "discount_code": oil_catalog_pricing["discount_code"],
+                    "dealer_discount_percent": oil_catalog_pricing["dealer_discount"] * 100,
+                    "dealer_total": oil_dealer_total,
+                    "customer_discount_percent": oil_catalog_pricing["customer_discount"] * 100,
+                    "active_total": oil_total,
+                    "imported_present": imported_oil_present,
+                    "replace_imported": replace_imported_oil,
+                    "software_active": oil_software_active,
+                },
+                "coolant": {
+                    "part_no": quote_value(quote, "coolant_catalog_part_no", ""),
+                    "is_concentrate": coolant_is_concentrate,
+                    "concentrate_percent": (
+                        coolant_concentrate_percent
+                        if coolant_is_concentrate
+                        else None
+                    ),
+                    "volume_factor": coolant_volume_factor,
+                    "calculated_total": coolant_calculated_total,
+                    "catalog_total": coolant_catalog_pricing["catalog_total"],
+                    "discount_code": coolant_catalog_pricing["discount_code"],
+                    "dealer_discount_percent": coolant_catalog_pricing["dealer_discount"] * 100,
+                    "dealer_total": coolant_dealer_total,
+                    "customer_discount_percent": coolant_catalog_pricing["customer_discount"] * 100,
+                    "active_total": coolant_total,
+                    "imported_present": imported_coolant_present,
+                    "replace_imported": replace_imported_coolant,
+                    "software_active": coolant_software_active,
+                },
+                "dealer_total": fluid_dealer_total,
             },
             "fees": {
                 "travel_fixed_setting": travel_fee_fixed,
@@ -707,8 +1054,19 @@ def apply_pricing(quote_id: int):
     print(f"Lignes pièces avec DC utilisées : {dc_lines_used}")
     print(f"Main d'oeuvre base : {total_labour:.2f} {currency} + {labour_margin}%")
     print(f"Services additionnels inclus : {additional_services_total:.2f} {currency}")
-    print(f"Total huile + coolant logiciel : {fluid_total:.2f} {currency}")
-    print(f"Remplacement huile/coolant Overview : {'oui' if replace_overview_fluids else 'non'}")
+    print(f"Huile catalogue : {oil_calculated_total:.2f} {currency}")
+    print(f"Huile cout dealer : {oil_dealer_total:.2f} {currency}")
+    print(f"Huile prix client actif : {oil_total:.2f} {currency}")
+    print(f"Coolant catalogue : {coolant_calculated_total:.2f} {currency}")
+    print(f"Coolant cout dealer : {coolant_dealer_total:.2f} {currency}")
+    print(f"Coolant prix client actif : {coolant_total:.2f} {currency}")
+    print(f"Total fluides cout dealer : {fluid_dealer_total:.2f} {currency}")
+    print(f"Total fluides prix client : {fluid_total:.2f} {currency}")
+    print(f"Service fluides : {fluid_service_id or 'aucun'}")
+    print(f"Huile importee detectee : {'oui' if imported_oil_present else 'non'}")
+    print(f"Huile importee neutralisee : {'oui' if replace_imported_oil else 'non'}")
+    print(f"Coolant importe detecte : {'oui' if imported_coolant_present else 'non'}")
+    print(f"Coolant importe neutralise : {'oui' if replace_imported_coolant else 'non'}")
     print(f"Frais deplacement fixes : {travel_fee_fixed:.2f} {currency}")
     print(f"Frais logistique : {logistics_fee}%")
     print(f"Frais admin : {admin_fee}%")

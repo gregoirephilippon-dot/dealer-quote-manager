@@ -50,14 +50,23 @@ def init_db():
                 total_labour REAL,
                 total_misc REAL,
 
+                oil_catalog_part_no TEXT,
                 oil_price_per_liter REAL DEFAULT 0,
                 oil_service_count REAL DEFAULT 0,
                 oil_quantity_per_service REAL DEFAULT 0,
+                oil_packaging_mode TEXT DEFAULT 'consumed',
+                oil_packaging_liters REAL DEFAULT 0,
+                coolant_catalog_part_no TEXT,
                 coolant_price_per_liter REAL DEFAULT 0,
                 coolant_service_count REAL DEFAULT 0,
                 coolant_quantity_per_service REAL DEFAULT 0,
+                coolant_concentrate_percent REAL DEFAULT 100,
+                coolant_packaging_mode TEXT DEFAULT 'consumed',
+                coolant_packaging_liters REAL DEFAULT 0,
                 fluid_total REAL DEFAULT 0,
                 replace_overview_fluids INTEGER DEFAULT 0,
+                replace_imported_oil INTEGER DEFAULT 0,
+                replace_imported_coolant INTEGER DEFAULT 0,
 
                 total_cost REAL,
 
