@@ -2073,6 +2073,108 @@ def quote_inputs_page(quote_id: int, request: Request):
     selected_oil_part = str(quote["oil_catalog_part_no"] or "")
     selected_coolant_part = str(quote["coolant_catalog_part_no"] or "")
 
+    selected_coolant_type = ""
+    for item in coolant_catalog_items:
+        if str(item.get("part_no") or "") == selected_coolant_part:
+            selected_coolant_type = str(
+                item.get("coolant_type_label") or ""
+            ).strip()
+            break
+
+    imported_coolant_part = (
+        str(imported_coolant_row["part_number"] or "").strip()
+        if imported_coolant
+        else ""
+    )
+
+    imported_coolant_type = ""
+    if imported_coolant_part:
+        for item in coolant_catalog_items:
+            if str(item.get("part_no") or "") == imported_coolant_part:
+                imported_coolant_type = str(
+                    item.get("coolant_type_label") or ""
+                ).strip()
+                break
+
+    def coolant_family(type_label):
+        value = str(type_label or "").strip().lower()
+
+        if value.startswith("vert"):
+            return "Vert"
+
+        if value.startswith("vcs-2 orange"):
+            return "VCS-2 orange"
+
+        return ""
+
+    selected_coolant_family = coolant_family(selected_coolant_type)
+    imported_coolant_family = coolant_family(imported_coolant_type)
+
+    selected_coolant_type_html = ""
+    if selected_coolant_part:
+        selected_label = selected_coolant_type or "Type non identifie"
+        selected_coolant_type_html = (
+            "<p style='margin:6px 0;'>"
+            "<strong>Reference selectionnee :</strong> "
+            f"{selected_label}"
+            "</p>"
+        )
+
+    imported_coolant_type_html = ""
+    if imported_coolant:
+        imported_label = imported_coolant_type or "Type non identifiable depuis le fichier Volvo"
+        imported_coolant_type_html = (
+            "<p style='margin:6px 0;'>"
+            "<strong>Coolant importe :</strong> "
+            f"{imported_label}"
+            "</p>"
+        )
+
+    coolant_compatibility_html = ""
+
+    if (
+        imported_coolant_family
+        and selected_coolant_family
+        and imported_coolant_family != selected_coolant_family
+    ):
+        coolant_compatibility_html = (
+            "<div style='"
+            "margin:10px 0 14px 0;"
+            "padding:12px 14px;"
+            "border:1px solid #c62828;"
+            "border-radius:8px;"
+            "background:#ffebee;"
+            "color:#8e0000;"
+            "'>"
+            "<strong>ALERTE COMPATIBILITE COOLANT</strong><br>"
+            f"Le coolant importe est de type {imported_coolant_family}, "
+            f"alors que la reference selectionnee est {selected_coolant_family}. "
+            "Ces familles ne doivent pas etre melangees sans procedure adaptee "
+            "de vidange/rincage."
+            "</div>"
+        )
+
+    elif (
+        imported_coolant
+        and not imported_coolant_family
+        and selected_coolant_family
+    ):
+        coolant_compatibility_html = (
+            "<div style='"
+            "margin:10px 0 14px 0;"
+            "padding:12px 14px;"
+            "border:1px solid #d6a000;"
+            "border-radius:8px;"
+            "background:#fff8dd;"
+            "color:#6b5200;"
+            "'>"
+            "<strong>Compatibilite coolant non verifiable automatiquement</strong><br>"
+            "Le fichier Volvo indique un coolant ready mixed mais ne fournit "
+            "aucune reference permettant de determiner s'il s'agit de Vert "
+            "ou de VCS-2 orange. Verifier le type present dans le moteur avant remplacement."
+            "</div>"
+        )
+
     oil_packaging_liters = 0
     for item in oil_catalog_items:
         if str(item.get("part_no") or "") == selected_oil_part:
@@ -2289,6 +2391,10 @@ def quote_inputs_page(quote_id: int, request: Request):
                 <p class="muted">
                     {coolant_status}
                 </p>
+
+                {imported_coolant_type_html}
+                {selected_coolant_type_html}
+                {coolant_compatibility_html}
 
                 {"<p class='muted' style='margin:4px 0 10px 0;'><strong>Verrouille :</strong> coolant deja present dans le fichier Volvo.</p>" if coolant_locked else ""}
 

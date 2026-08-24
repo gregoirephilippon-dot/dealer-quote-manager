@@ -768,6 +768,8 @@ def apply_pricing(quote_id: int):
             for row in included_services
         )
 
+        service_2_2_present = "2,2" in included_service_ids
+
         fluid_service_id = None
 
         if fluid_total > 0:
@@ -808,11 +810,12 @@ def apply_pricing(quote_id: int):
                 )
 
             # Anti-doublon 2.1 / 2.2 :
-            # si le 2.2 importe Volvo/Overview est deja present,
-            # le 2.1 peut rester visible dans Base Care mais ne doit pas
-            # ajouter une seconde fois les memes pieces de maintenance.
+            # 2.1 = pieces de maintenance uniquement.
+            # 2.2 = pieces de maintenance + main-d'oeuvre.
+            # Si 2.2 est inclus, 2.1 ne doit jamais ajouter une seconde
+            # fois les memes pieces, quelle que soit l'origine du 2.2.
             if (
-                imported_overview_2_2_present
+                service_2_2_present
                 and str(service["service_id"] or "") == "2,1"
             ):
                 service_price_for_total = 0
@@ -826,12 +829,12 @@ def apply_pricing(quote_id: int):
                     "Amount already included in imported parts, labour and misc."
                 )
             elif (
-                imported_overview_2_2_present
+                service_2_2_present
                 and str(service["service_id"] or "") == "2,1"
             ):
                 exclusion_reason = (
                     "Neutralized to avoid duplicate maintenance parts "
-                    "with imported Volvo Overview service 2.2."
+                    "because service 2.2 already includes maintenance parts."
                 )
 
             services_trace.append(
