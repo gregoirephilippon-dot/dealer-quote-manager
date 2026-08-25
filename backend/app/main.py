@@ -4853,6 +4853,124 @@ def create_contract_submit(
                         ),
                     )
 
+        # ----------------------------------------------------
+        # Generate contractual billing events
+        # ----------------------------------------------------
+
+        if billing_mode == "monthly":
+            billing_day_value = int(billing_day or 1)
+            billing_day_value = max(1, min(28, billing_day_value))
+
+            billing_year = start_date_obj.year
+            billing_month = start_date_obj.month
+
+            candidate = date(
+                billing_year,
+                billing_month,
+                billing_day_value,
+            )
+
+            if candidate < start_date_obj:
+                if billing_month == 12:
+                    billing_year += 1
+                    billing_month = 1
+                else:
+                    billing_month += 1
+
+                candidate = date(
+                    billing_year,
+                    billing_month,
+                    billing_day_value,
+                )
+
+            billing_end_date = date.fromisoformat(
+                planned_end_date
+            )
+
+            while candidate <= billing_end_date:
+                event_key = (
+                    f"monthly:{candidate.isoformat()}"
+                )
+
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO contract_billing_events (
+                        contract_id,
+                        event_key,
+                        billing_type,
+                        due_date,
+                        source_intervention_id,
+                        status
+                    )
+                    VALUES (?, ?, 'monthly', ?, NULL, 'planned')
+                    """,
+                    (
+                        contract_id,
+                        event_key,
+                        candidate.isoformat(),
+                    ),
+                )
+
+                if candidate.month == 12:
+                    next_year = candidate.year + 1
+                    next_month = 1
+                else:
+                    next_year = candidate.year
+                    next_month = candidate.month + 1
+
+                candidate = date(
+                    next_year,
+                    next_month,
+                    billing_day_value,
+                )
+
+        elif billing_mode == "per_intervention":
+            billing_interventions = conn.execute(
+                """
+                SELECT
+                    id,
+                    planned_date
+                FROM contract_interventions
+                WHERE contract_id = ?
+                  AND planned_date IS NOT NULL
+                ORDER BY planned_engine_hours, id
+                """,
+                (contract_id,),
+            ).fetchall()
+
+            for billing_intervention in billing_interventions:
+                source_intervention_id = int(
+                    billing_intervention["id"]
+                )
+
+                due_date = str(
+                    billing_intervention["planned_date"]
+                )
+
+                event_key = (
+                    f"intervention:{source_intervention_id}"
+                )
+
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO contract_billing_events (
+                        contract_id,
+                        event_key,
+                        billing_type,
+                        due_date,
+                        source_intervention_id,
+                        status
+                    )
+                    VALUES (?, ?, 'per_intervention', ?, ?, 'planned')
+                    """,
+                    (
+                        contract_id,
+                        event_key,
+                        due_date,
+                        source_intervention_id,
+                    ),
+                )
+
         conn.commit()
 
     return RedirectResponse(
@@ -5142,6 +5260,19 @@ def contract_meter_reading_submit(
                     ),
                 )
 
+                conn.execute(
+                    """
+                    UPDATE contract_billing_events
+                    SET due_date = ?
+                    WHERE billing_type = 'per_intervention'
+                      AND source_intervention_id = ?
+                    """,
+                    (
+                        intervention_date,
+                        intervention["id"],
+                    ),
+                )
+
         conn.execute(
             """
             UPDATE contracts
@@ -5289,6 +5420,19 @@ def contract_intervention_complete(
             """,
             (
                 actual_engine_hours,
+                actual_date,
+                intervention_id,
+            ),
+        )
+
+        conn.execute(
+            """
+            UPDATE contract_billing_events
+            SET due_date = ?
+            WHERE billing_type = 'per_intervention'
+              AND source_intervention_id = ?
+            """,
+            (
                 actual_date,
                 intervention_id,
             ),
@@ -5463,6 +5607,19 @@ def contract_intervention_complete(
                     UPDATE contract_interventions
                     SET planned_date = ?
                     WHERE id = ?
+                    """,
+                    (
+                        forecast_date,
+                        future_row["id"],
+                    ),
+                )
+
+                conn.execute(
+                    """
+                    UPDATE contract_billing_events
+                    SET due_date = ?
+                    WHERE billing_type = 'per_intervention'
+                      AND source_intervention_id = ?
                     """,
                     (
                         forecast_date,

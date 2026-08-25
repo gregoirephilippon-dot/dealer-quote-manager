@@ -190,6 +190,26 @@ def init_db():
                 FOREIGN KEY(contract_id) REFERENCES contracts(id)
             );
 
+            CREATE TABLE IF NOT EXISTS contract_billing_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id INTEGER NOT NULL,
+                event_key TEXT NOT NULL,
+                billing_type TEXT NOT NULL,
+                due_date TEXT NOT NULL,
+                source_intervention_id INTEGER,
+                status TEXT DEFAULT 'planned',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                UNIQUE(contract_id, event_key),
+
+                FOREIGN KEY(contract_id)
+                    REFERENCES contracts(id),
+
+                FOREIGN KEY(source_intervention_id)
+                    REFERENCES contract_interventions(id)
+            );
+
+
             CREATE TABLE IF NOT EXISTS contract_delivery_profiles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NOT NULL,
