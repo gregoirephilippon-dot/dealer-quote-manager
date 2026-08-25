@@ -2872,7 +2872,7 @@ def contract_module_navigation():
         <a class="button secondary" href="/contracts/parts-forecast">Prevision pieces</a>
         <a class="button secondary" href="/contracts/planning">Planning &amp; Agenda</a>
         <span class="button secondary">Documents</span>
-        <span class="button secondary">Parametres</span>
+        <a class="button secondary" href="/contracts/settings/recipients">Parametres</a>
     </div>
     """
 
@@ -3341,6 +3341,384 @@ def contracts_planning_page(
     """
 
     return layout("Planning & Agenda", content)
+
+
+
+@app.get("/contracts/settings/recipients", response_class=HTMLResponse)
+def contract_recipients_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    role = str(context.get("role") or "").upper()
+    if role not in ("OWNER", "SUPER_ADMIN", "COMPANY_ADMIN"):
+        return admin_required_page()
+
+    company_id = get_active_company_id_for_request(request)
+    company_name = get_active_company_name_for_request(request)
+
+    import server_user_model as identity
+    identity.ensure_company_delivery_profiles(company_id)
+
+    from html import escape as html_escape
+
+    with get_connection() as conn:
+        profiles = conn.execute(
+            """
+            SELECT id, profile_key, profile_name, is_active
+            FROM contract_delivery_profiles
+            WHERE company_id = ?
+            ORDER BY
+                CASE profile_key
+                    WHEN 'atelier' THEN 1
+                    WHEN 'magasin' THEN 2
+                    WHEN 'facturation' THEN 3
+                    WHEN 'commerce' THEN 4
+                    ELSE 99
+                END
+            """,
+            (company_id,),
+        ).fetchall()
+
+        recipients = conn.execute(
+            """
+            SELECT
+                r.id,
+                r.profile_id,
+                r.recipient_name,
+                r.email,
+                r.is_active,
+                r.attach_ics
+            FROM contract_delivery_recipients r
+            JOIN contract_delivery_profiles p
+              ON p.id = r.profile_id
+            WHERE p.company_id = ?
+            ORDER BY p.id, r.id
+            """,
+            (company_id,),
+        ).fetchall()
+
+    recipients_by_profile = {}
+    for recipient in recipients:
+        recipients_by_profile.setdefault(
+            int(recipient["profile_id"]),
+            [],
+        ).append(recipient)
+
+    profile_html = ""
+
+    descriptions = {
+        "atelier": "Interventions, informations machine et liste des pieces necessaires.",
+        "magasin": "Previsions et besoins consolides en pieces.",
+        "facturation": "Echeances de facturation selon les dates contractuelles.",
+        "commerce": "Debut, fin et renouvellement des contrats.",
+    }
+
+    for profile in profiles:
+        profile_id = int(profile["id"])
+        profile_key = str(profile["profile_key"] or "")
+        profile_name = html_escape(str(profile["profile_name"] or profile_key))
+
+        rows_html = ""
+
+        for recipient in recipients_by_profile.get(profile_id, []):
+            recipient_id = int(recipient["id"])
+            recipient_name = html_escape(str(recipient["recipient_name"] or ""))
+            email = html_escape(str(recipient["email"] or ""))
+            active_text = "Oui" if int(recipient["is_active"] or 0) else "Non"
+            ics_text = "Oui" if int(recipient["attach_ics"] or 0) else "Non"
+
+            rows_html += f"""
+            <tr>
+                <td>{recipient_name or '-'}</td>
+                <td>{email}</td>
+                <td>{active_text}</td>
+                <td>{ics_text}</td>
+                <td style="white-space:nowrap;">
+                    <form action="/contracts/settings/recipients/{recipient_id}/toggle"
+                          method="post"
+                          style="display:inline;">
+                        <button class="button secondary" type="submit">
+                            Activer / desactiver
+                        </button>
+                    </form>
+
+                    <form action="/contracts/settings/recipients/{recipient_id}/delete"
+                          method="post"
+                          style="display:inline;"
+                          onsubmit="return confirm('Supprimer ce destinataire ?');">
+                        <button type="submit">Supprimer</button>
+                    </form>
+                </td>
+            </tr>
+            """
+
+        if not rows_html:
+            rows_html = """
+            <tr>
+                <td colspan="5" class="muted">
+                    Aucun destinataire configure.
+                </td>
+            </tr>
+            """
+
+        description = descriptions.get(profile_key, "")
+
+        profile_html += f"""
+        <div class="card">
+            <h3>{profile_name}</h3>
+            <p class="muted">{description}</p>
+
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Email</th>
+                            <th>Actif</th>
+                            <th>Agenda .ics</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
+
+            <form action="/contracts/settings/recipients/add"
+                  method="post"
+                  style="margin-top:16px;">
+                <input type="hidden" name="profile_id" value="{profile_id}">
+
+                <div class="grid">
+                    <label>
+                        Nom
+                        <input type="text" name="recipient_name">
+                    </label>
+
+                    <label>
+                        Email
+                        <input type="email" name="email" required>
+                    </label>
+
+                    <label>
+                        Ajouter une invitation agenda .ics
+                        <select name="attach_ics">
+                            <option value="1">Oui</option>
+                            <option value="0">Non</option>
+                        </select>
+                    </label>
+                </div>
+
+                <button type="submit">Ajouter le destinataire</button>
+            </form>
+        </div>
+        """
+
+    content = f"""
+    <h2>Parametres contrats - Destinataires</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <strong>Societe active :</strong> {html_escape(str(company_name))}
+        <p class="muted">
+            Chaque societe possede ses propres destinataires.
+            Une meme personne peut etre ajoutee a plusieurs profils.
+        </p>
+    </div>
+
+    {profile_html}
+    """
+
+    return layout("Destinataires contrats", content)
+
+
+@app.post("/contracts/settings/recipients/add")
+async def contract_recipient_add(
+    request: Request,
+    profile_id: int = Form(...),
+    recipient_name: str = Form(""),
+    email: str = Form(...),
+    attach_ics: int = Form(1),
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    role = str(context.get("role") or "").upper()
+    if role not in ("OWNER", "SUPER_ADMIN", "COMPANY_ADMIN"):
+        return admin_required_page()
+
+    company_id = get_active_company_id_for_request(request)
+
+    email = (email or "").strip().lower()
+    recipient_name = (recipient_name or "").strip()
+
+    if not email:
+        return HTMLResponse(
+            layout(
+                "Email invalide",
+                "<div class='card'>Une adresse email est obligatoire.</div>",
+            ),
+            status_code=400,
+        )
+
+    with get_connection() as conn:
+        profile = conn.execute(
+            """
+            SELECT id
+            FROM contract_delivery_profiles
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (profile_id, company_id),
+        ).fetchone()
+
+        if not profile:
+            return HTMLResponse(
+                layout(
+                    "Profil invalide",
+                    "<div class='card'>Profil destinataire introuvable.</div>",
+                ),
+                status_code=404,
+            )
+
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO contract_delivery_recipients (
+                profile_id,
+                recipient_name,
+                email,
+                is_active,
+                attach_ics
+            )
+            VALUES (?, ?, ?, 1, ?)
+            """,
+            (
+                profile_id,
+                recipient_name,
+                email,
+                1 if int(attach_ics) else 0,
+            ),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url="/contracts/settings/recipients",
+        status_code=303,
+    )
+
+
+@app.post("/contracts/settings/recipients/{recipient_id}/toggle")
+def contract_recipient_toggle(recipient_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    role = str(context.get("role") or "").upper()
+    if role not in ("OWNER", "SUPER_ADMIN", "COMPANY_ADMIN"):
+        return admin_required_page()
+
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        recipient = conn.execute(
+            """
+            SELECT r.id, r.is_active
+            FROM contract_delivery_recipients r
+            JOIN contract_delivery_profiles p
+              ON p.id = r.profile_id
+            WHERE r.id = ?
+              AND p.company_id = ?
+            """,
+            (recipient_id, company_id),
+        ).fetchone()
+
+        if not recipient:
+            return HTMLResponse(
+                layout(
+                    "Destinataire introuvable",
+                    "<div class='card'>Destinataire introuvable.</div>",
+                ),
+                status_code=404,
+            )
+
+        new_value = 0 if int(recipient["is_active"] or 0) else 1
+
+        conn.execute(
+            """
+            UPDATE contract_delivery_recipients
+            SET is_active = ?
+            WHERE id = ?
+            """,
+            (new_value, recipient_id),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url="/contracts/settings/recipients",
+        status_code=303,
+    )
+
+
+@app.post("/contracts/settings/recipients/{recipient_id}/delete")
+def contract_recipient_delete(recipient_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    role = str(context.get("role") or "").upper()
+    if role not in ("OWNER", "SUPER_ADMIN", "COMPANY_ADMIN"):
+        return admin_required_page()
+
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        recipient = conn.execute(
+            """
+            SELECT r.id
+            FROM contract_delivery_recipients r
+            JOIN contract_delivery_profiles p
+              ON p.id = r.profile_id
+            WHERE r.id = ?
+              AND p.company_id = ?
+            """,
+            (recipient_id, company_id),
+        ).fetchone()
+
+        if recipient:
+            conn.execute(
+                "DELETE FROM contract_delivery_recipients WHERE id = ?",
+                (recipient_id,),
+            )
+            conn.commit()
+
+    return RedirectResponse(
+        url="/contracts/settings/recipients",
+        status_code=303,
+    )
 
 
 @app.get(

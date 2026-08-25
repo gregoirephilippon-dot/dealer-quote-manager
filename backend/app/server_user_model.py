@@ -101,6 +101,45 @@ def init_server_identity_tables():
 
         conn.commit()
 
+    with get_connection() as conn:
+        company_rows = conn.execute(
+            "SELECT id FROM companies ORDER BY id"
+        ).fetchall()
+
+    for company_row in company_rows:
+        ensure_company_delivery_profiles(
+            int(company_row["id"])
+        )
+
+
+def ensure_company_delivery_profiles(company_id: int):
+    profiles = [
+        ("atelier", "Atelier"),
+        ("magasin", "Magasin"),
+        ("facturation", "Facturation"),
+        ("commerce", "Commerce"),
+    ]
+
+    with get_connection() as conn:
+        table_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='contract_delivery_profiles'"
+        ).fetchone()
+
+        if not table_exists:
+            return
+
+        for profile_key, profile_name in profiles:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO contract_delivery_profiles
+                (company_id, profile_key, profile_name)
+                VALUES (?, ?, ?)
+                """,
+                (company_id, profile_key, profile_name),
+            )
+
+        conn.commit()
+
 
 def create_company(name: str, slug: str) -> int:
     now = datetime.now().isoformat(timespec="seconds")
@@ -117,8 +156,10 @@ def create_company(name: str, slug: str) -> int:
         ).fetchone()
 
         conn.commit()
-        return int(row["id"])
+        company_id = int(row["id"])
 
+    ensure_company_delivery_profiles(company_id)
+    return company_id
 
 
 def get_default_company_id() -> int:

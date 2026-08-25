@@ -190,6 +190,33 @@ def init_db():
                 FOREIGN KEY(contract_id) REFERENCES contracts(id)
             );
 
+            CREATE TABLE IF NOT EXISTS contract_delivery_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL,
+                profile_key TEXT NOT NULL,
+                profile_name TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                UNIQUE(company_id, profile_key)
+            );
+
+            CREATE TABLE IF NOT EXISTS contract_delivery_recipients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id INTEGER NOT NULL,
+                recipient_name TEXT,
+                email TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                attach_ics INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                UNIQUE(profile_id, email),
+
+                FOREIGN KEY(profile_id)
+                    REFERENCES contract_delivery_profiles(id)
+            );
+
+
             CREATE TABLE IF NOT EXISTS contract_intervention_parts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 contract_intervention_id INTEGER NOT NULL,
