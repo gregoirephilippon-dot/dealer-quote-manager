@@ -132,6 +132,77 @@ def init_db():
                 UNIQUE(quote_id, service_id),
                 FOREIGN KEY(quote_id) REFERENCES quotes(id)
             );
+
+            CREATE TABLE IF NOT EXISTS contracts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quote_id INTEGER NOT NULL,
+                contract_number TEXT NOT NULL UNIQUE,
+                company_id INTEGER,
+                status TEXT DEFAULT 'draft',
+                customer_name TEXT,
+                engine_serial_number TEXT,
+                product_name TEXT,
+                product_designation TEXT,
+                start_date TEXT,
+                planned_end_date TEXT,
+                start_engine_hours REAL DEFAULT 0,
+                current_engine_hours REAL DEFAULT 0,
+                planned_end_engine_hours REAL DEFAULT 0,
+                hours_per_year REAL DEFAULT 0,
+                package_key TEXT,
+                currency TEXT DEFAULT 'EUR',
+                contract_total REAL DEFAULT 0,
+                billing_mode TEXT DEFAULT 'monthly',
+                billing_day INTEGER,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                activated_at TEXT,
+                ended_at TEXT,
+
+                FOREIGN KEY(quote_id) REFERENCES quotes(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS contract_meter_readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id INTEGER NOT NULL,
+                reading_date TEXT NOT NULL,
+                engine_hours REAL NOT NULL,
+                source TEXT DEFAULT 'manual',
+                contract_intervention_id INTEGER,
+                notes TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY(contract_id) REFERENCES contracts(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS contract_interventions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id INTEGER NOT NULL,
+                intervention_type TEXT,
+                reference_engine_hours REAL,
+                planned_engine_hours REAL,
+                planned_date TEXT,
+                actual_engine_hours REAL,
+                actual_date TEXT,
+                status TEXT DEFAULT 'planned',
+                notes TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY(contract_id) REFERENCES contracts(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS contract_intervention_parts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_intervention_id INTEGER NOT NULL,
+                part_number TEXT,
+                description TEXT,
+                planned_quantity REAL DEFAULT 0,
+                actual_quantity REAL DEFAULT 0,
+                source TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY(contract_intervention_id)
+                    REFERENCES contract_interventions(id)
+            );
             """
         )
 

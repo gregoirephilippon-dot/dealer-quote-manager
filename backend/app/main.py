@@ -1385,6 +1385,7 @@ def home(request: Request):
                 <a class="button green" href="/quote/{quote_id}/inputs">Données contrat / moteur</a>
                 <a class="button" href="/quote/{quote_id}/services">Construction de l’offre</a>
                 <a class="button secondary" href="/quote/{quote_id}/export">Générer exports</a>
+                {f'<a class="button gold" href="/quote/{quote_id}/contract/create">Cr&eacute;er le contrat</a>' if str(row['status'] or '') == 'accepted' else ''}
                 {f'<a class="button danger" href="/quote/{quote_id}/archive/confirm">Archiver</a>' if str(row['status']) in ['draft', 'sent', 'refused'] else ''}
                 {f'<a class="button secondary" href="/quote/{quote_id}/restore">Restaurer</a>' if str(row['status']) == 'archived' else ''}
                 {html_link}{pdf_link}{dealer_html_link}{dealer_pdf_link}
@@ -1401,6 +1402,7 @@ def home(request: Request):
     </div>
     <div class="card">
         <a class="button" href="/import">Importer un nouveau fichier Service Calculator</a>
+        <a class="button green" href="/contracts">Contrats</a>
         <button class="button secondary" type="button" onclick="document.getElementById('feedbackModal').style.display='block'">Retour d'expérience</button>
     </div>
 
@@ -2837,6 +2839,2008 @@ def build_yearly_indexation_settings_html(settings: dict, max_years: int = 10) -
         </table>
     </div>
     """
+
+
+
+
+
+# ============================================================
+# V1.1 - MODULE CONTRATS
+# ============================================================
+
+def get_contract_for_current_company(request: Request, contract_id: int):
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        return conn.execute(
+            """
+            SELECT *
+            FROM contracts
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (contract_id, company_id),
+        ).fetchone()
+
+
+def contract_module_navigation():
+    return """
+    <div class="card" style="display:flex; flex-wrap:wrap; gap:8px;">
+        <a class="button secondary" href="/contracts">Tableau de bord</a>
+        <a class="button green" href="/contracts">Mes contrats</a>
+        <span class="button secondary">Interventions</span>
+        <span class="button secondary">Prevision pieces</span>
+        <span class="button secondary">Planning &amp; Agenda</span>
+        <span class="button secondary">Documents</span>
+        <span class="button secondary">Parametres</span>
+    </div>
+    """
+
+
+@app.get("/contracts", response_class=HTMLResponse)
+def contracts_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+    company_name = get_active_company_name_for_request(request)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM contracts
+            WHERE company_id = ?
+            ORDER BY id DESC
+            """,
+            (company_id,),
+        ).fetchall()
+
+    rows_html = ""
+
+    for row in rows:
+        currency = row["currency"] or "EUR"
+
+        rows_html += f"""
+        <tr>
+            <td><strong>{row["contract_number"]}</strong></td>
+            <td>{row["status"] or "-"}</td>
+            <td>{row["customer_name"] or "-"}</td>
+            <td>{row["product_designation"] or row["product_name"] or "-"}</td>
+            <td>{row["engine_serial_number"] or "-"}</td>
+            <td>{row["start_date"] or "-"}</td>
+            <td>{row["planned_end_date"] or "-"}</td>
+            <td>{fmt_number(row["current_engine_hours"])} h</td>
+            <td>{fmt_number(row["planned_end_engine_hours"])} h</td>
+            <td>{fmt_money(row["contract_total"], currency)}</td>
+            <td>
+                <a class="button green" href="/contract/{row['id']}">
+                    Ouvrir
+                </a>
+            </td>
+        </tr>
+        """
+
+    if not rows_html:
+        rows_html = """
+        <tr>
+            <td colspan="11">
+                Aucun contrat pour le moment.
+                Un contrat pourra etre cree depuis un devis accepte.
+            </td>
+        </tr>
+        """
+
+    content = f"""
+    <h2>Contrats</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <strong>Societe active :</strong> {company_name}
+    </div>
+
+    <div class="card">
+        <h3>Mes contrats</h3>
+
+        <div style="overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Contrat</th>
+                        <th>Statut</th>
+                        <th>Client</th>
+                        <th>Machine / moteur</th>
+                        <th>No serie</th>
+                        <th>Debut</th>
+                        <th>Fin prevue</th>
+                        <th>Compteur actuel</th>
+                        <th>Compteur fin</th>
+                        <th>Montant</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <a class="button secondary" href="/">
+        Retour aux offres
+    </a>
+    """
+
+    return layout("Contrats", content)
+
+
+@app.get(
+    "/quote/{quote_id}/contract/create",
+    response_class=HTMLResponse
+)
+def create_contract_page(quote_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    quote = get_quote_for_current_company(request, quote_id)
+
+    if not quote:
+        return quote_access_denied_response(quote_id)
+
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM contracts
+            WHERE quote_id = ?
+              AND company_id = ?
+            """,
+            (quote_id, company_id),
+        ).fetchone()
+
+    if existing:
+        return RedirectResponse(
+            url=f"/contract/{existing['id']}",
+            status_code=303,
+        )
+
+    if str(quote["status"] or "") != "accepted":
+        content = f"""
+        <h2>Creation du contrat</h2>
+        <div class="card">
+            <h3>Devis non accepte</h3>
+            <p>
+                Le devis #{quote_id} doit avoir le statut
+                <strong>accepted</strong>.
+            </p>
+            <a
+                class="button secondary"
+                href="/quote/{quote_id}/inputs"
+            >
+                Retour au devis
+            </a>
+        </div>
+        """
+        return layout("Creation contrat", content)
+
+    from datetime import date, timedelta
+
+    today = date.today()
+
+    total_hours = float(quote["total_hours"] or 0)
+    hours_per_year = float(quote["hours_per_year"] or 0)
+
+    planned_end_date = ""
+
+    if total_hours > 0 and hours_per_year > 0:
+        contract_years = total_hours / hours_per_year
+
+        planned_end_date = (
+            today
+            + timedelta(days=contract_years * 365.25)
+        ).isoformat()
+
+    customer = quote["customer_name"] or "-"
+
+    engine = (
+        quote["product_designation"]
+        or quote["product_name"]
+        or "-"
+    )
+
+    serial = quote["engine_serial_number"] or "-"
+
+    package_name = (
+        quote["package_name"]
+        or quote["package_key"]
+        or "-"
+    )
+
+    currency = quote["currency"] or "EUR"
+
+    content = f"""
+    <h2>Creer le contrat</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <h3>Devis source #{quote_id}</h3>
+
+        <div class="grid">
+            <label>
+                Client
+                <input value="{customer}" readonly>
+            </label>
+
+            <label>
+                Machine / moteur
+                <input value="{engine}" readonly>
+            </label>
+
+            <label>
+                Numero de serie
+                <input value="{serial}" readonly>
+            </label>
+
+            <label>
+                Package
+                <input value="{package_name}" readonly>
+            </label>
+
+            <label>
+                Montant contrat
+                <input
+                    value="{fmt_money(quote['selling_total'], currency)}"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Heures couvertes
+                <input
+                    id="contract_hours"
+                    type="number"
+                    value="{total_hours:g}"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Heures moteur / an
+                <input
+                    id="hours_per_year"
+                    type="number"
+                    value="{hours_per_year:g}"
+                    readonly
+                >
+            </label>
+        </div>
+    </div>
+
+    <form
+        class="card"
+        method="post"
+        action="/quote/{quote_id}/contract/create"
+    >
+        <h3>Demarrage du contrat</h3>
+
+        <div class="grid">
+            <label>
+                Date de debut
+                <input
+                    id="start_date"
+                    type="date"
+                    name="start_date"
+                    value="{today.isoformat()}"
+                    required
+                    onchange="updateContractPreview()"
+                >
+            </label>
+
+            <label>
+                Compteur moteur au debut
+                <input
+                    id="start_engine_hours"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    name="start_engine_hours"
+                    value="0"
+                    required
+                    oninput="updateContractPreview()"
+                >
+            </label>
+
+            <label>
+                Compteur fin contractuel
+                <input
+                    id="planned_end_engine_hours"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    name="planned_end_engine_hours"
+                    value="{total_hours:g}"
+                    required
+                >
+                <small class="muted">
+                    Compteur debut + heures contrat.
+                </small>
+            </label>
+
+            <label>
+                Date de fin estimee
+                <input
+                    id="planned_end_date_preview"
+                    type="date"
+                    value="{planned_end_date}"
+                    readonly
+                >
+            </label>
+        </div>
+
+        <h3>Facturation</h3>
+
+        <div class="grid">
+            <label>
+                Mode de facturation
+                <select
+                    id="billing_mode"
+                    name="billing_mode"
+                    onchange="updateBillingDay()"
+                >
+                    <option value="monthly">
+                        Mensuelle
+                    </option>
+
+                    <option value="per_intervention">
+                        A l'intervention / a la tache
+                    </option>
+                </select>
+            </label>
+
+            <label id="billing_day_label">
+                Jour de facturation
+                <input
+                    type="number"
+                    min="1"
+                    max="28"
+                    name="billing_day"
+                    value="1"
+                >
+            </label>
+        </div>
+
+        <div style="margin-top:20px;">
+            <button
+                class="button green"
+                type="submit"
+            >
+                Valider et creer le contrat
+            </button>
+
+            <a
+                class="button secondary"
+                href="/quote/{quote_id}/inputs"
+            >
+                Annuler
+            </a>
+        </div>
+    </form>
+
+    <script>
+    let endHoursEdited = false;
+
+    const endHoursField =
+        document.getElementById(
+            "planned_end_engine_hours"
+        );
+
+    endHoursField.addEventListener(
+        "input",
+        function() {{
+            endHoursEdited = true;
+        }}
+    );
+
+    function updateContractPreview() {{
+        const startHours =
+            parseFloat(
+                document.getElementById(
+                    "start_engine_hours"
+                ).value
+            ) || 0;
+
+        const contractHours =
+            parseFloat(
+                document.getElementById(
+                    "contract_hours"
+                ).value
+            ) || 0;
+
+        if (!endHoursEdited) {{
+            endHoursField.value =
+                (startHours + contractHours).toFixed(1);
+        }}
+
+        const startDateValue =
+            document.getElementById(
+                "start_date"
+            ).value;
+
+        const hoursPerYear =
+            parseFloat(
+                document.getElementById(
+                    "hours_per_year"
+                ).value
+            ) || 0;
+
+        if (
+            startDateValue &&
+            contractHours > 0 &&
+            hoursPerYear > 0
+        ) {{
+            const years =
+                contractHours / hoursPerYear;
+
+            const days =
+                Math.round(years * 365.25);
+
+            const d =
+                new Date(
+                    startDateValue + "T12:00:00"
+                );
+
+            d.setDate(d.getDate() + days);
+
+            document.getElementById(
+                "planned_end_date_preview"
+            ).value =
+                d.toISOString().slice(0, 10);
+        }}
+    }}
+
+    function updateBillingDay() {{
+        const mode =
+            document.getElementById(
+                "billing_mode"
+            ).value;
+
+        document.getElementById(
+            "billing_day_label"
+        ).style.display =
+            mode === "monthly"
+            ? "block"
+            : "none";
+    }}
+
+    updateContractPreview();
+    updateBillingDay();
+    </script>
+    """
+
+    return layout("Creer le contrat", content)
+
+
+@app.post("/quote/{quote_id}/contract/create")
+def create_contract_submit(
+    quote_id: int,
+    request: Request,
+    start_date: str = Form(""),
+    start_engine_hours: float = Form(0),
+    planned_end_engine_hours: float = Form(0),
+    billing_mode: str = Form("monthly"),
+    billing_day: int = Form(1),
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    quote = get_quote_for_current_company(
+        request,
+        quote_id,
+    )
+
+    if not quote:
+        return quote_access_denied_response(quote_id)
+
+    if str(quote["status"] or "") != "accepted":
+        return HTMLResponse(
+            layout(
+                "Creation contrat",
+                """
+                <div class="card">
+                    <h3>Creation refusee</h3>
+                    <p>
+                        Le devis doit etre accepte.
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    from datetime import date, timedelta
+
+    company_id = get_active_company_id_for_request(
+        request
+    )
+
+    start_date = (start_date or "").strip()
+
+    try:
+        start_date_obj = date.fromisoformat(
+            start_date
+        )
+    except Exception:
+        start_date_obj = date.today()
+        start_date = start_date_obj.isoformat()
+
+    start_engine_hours = max(
+        0.0,
+        float(start_engine_hours or 0),
+    )
+
+    contract_hours = max(
+        0.0,
+        float(quote["total_hours"] or 0),
+    )
+
+    hours_per_year = max(
+        0.0,
+        float(quote["hours_per_year"] or 0),
+    )
+
+    proposed_end_hours = (
+        start_engine_hours + contract_hours
+    )
+
+    planned_end_engine_hours = float(
+        planned_end_engine_hours or 0
+    )
+
+    if (
+        planned_end_engine_hours
+        <= start_engine_hours
+    ):
+        planned_end_engine_hours = (
+            proposed_end_hours
+        )
+
+    planned_end_date = None
+
+    if contract_hours > 0 and hours_per_year > 0:
+        contract_years = (
+            contract_hours / hours_per_year
+        )
+
+        planned_end_date = (
+            start_date_obj
+            + timedelta(
+                days=contract_years * 365.25
+            )
+        ).isoformat()
+
+    if billing_mode not in (
+        "monthly",
+        "per_intervention",
+    ):
+        billing_mode = "monthly"
+
+    if billing_mode == "monthly":
+        try:
+            billing_day = int(billing_day)
+        except Exception:
+            billing_day = 1
+
+        billing_day = min(
+            28,
+            max(1, billing_day),
+        )
+    else:
+        billing_day = None
+
+    with get_connection() as conn:
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM contracts
+            WHERE quote_id = ?
+              AND company_id = ?
+            """,
+            (quote_id, company_id),
+        ).fetchone()
+
+        if existing:
+            return RedirectResponse(
+                url=f"/contract/{existing['id']}",
+                status_code=303,
+            )
+
+        next_id = conn.execute(
+            """
+            SELECT COALESCE(MAX(id), 0) + 1
+            FROM contracts
+            """
+        ).fetchone()[0]
+
+        contract_number = (
+            f"CTR-{start_date_obj.year}-"
+            f"{int(next_id):04d}"
+        )
+
+        cursor = conn.execute(
+            """
+            INSERT INTO contracts (
+                quote_id,
+                contract_number,
+                company_id,
+                status,
+                customer_name,
+                engine_serial_number,
+                product_name,
+                product_designation,
+                start_date,
+                planned_end_date,
+                start_engine_hours,
+                current_engine_hours,
+                planned_end_engine_hours,
+                hours_per_year,
+                package_key,
+                currency,
+                contract_total,
+                billing_mode,
+                billing_day
+            )
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            (
+                quote_id,
+                contract_number,
+                company_id,
+                "draft",
+                quote["customer_name"],
+                quote["engine_serial_number"],
+                quote["product_name"],
+                quote["product_designation"],
+                start_date,
+                planned_end_date,
+                start_engine_hours,
+                start_engine_hours,
+                planned_end_engine_hours,
+                hours_per_year,
+                quote["package_key"],
+                quote["currency"] or "EUR",
+                float(
+                    quote["selling_total"] or 0
+                ),
+                billing_mode,
+                billing_day,
+            ),
+        )
+
+        contract_id = cursor.lastrowid
+
+        conn.execute(
+            """
+            INSERT INTO contract_meter_readings (
+                contract_id,
+                reading_date,
+                engine_hours,
+                source,
+                notes
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                contract_id,
+                start_date,
+                start_engine_hours,
+                "contract_start",
+                "Initial contract engine-hour reading",
+            ),
+        )
+
+        # ----------------------------------------------------
+        # Generate contract interventions from imported quote
+        # ----------------------------------------------------
+
+        imported_interventions = conn.execute(
+            """
+            SELECT *
+            FROM interventions
+            WHERE quote_id = ?
+            ORDER BY engine_hours, intervention_date, id
+            """,
+            (quote_id,),
+        ).fetchall()
+
+        quote_parts = conn.execute(
+            """
+            SELECT *
+            FROM quote_lines
+            WHERE quote_id = ?
+              AND part_number IS NOT NULL
+              AND TRIM(part_number) <> ''
+            ORDER BY id
+            """,
+            (quote_id,),
+        ).fetchall()
+
+        parts_by_component = {}
+
+        for part in quote_parts:
+            component = str(part["component"] or "").strip()
+
+            if component not in parts_by_component:
+                parts_by_component[component] = []
+
+            parts_by_component[component].append(part)
+
+        def components_for_relative_hours(relative_hours):
+            value = float(relative_hours or 0)
+
+            components = []
+
+            # Standard maintenance
+            if value > 0 and value % 500 == 0:
+                components.extend(["A", "C"])
+
+            # Additional 2000-hour maintenance
+            if value > 0 and value % 2000 == 0:
+                components.extend(["B", "D"])
+
+            # Special 6000-hour operation
+            if abs(value - 6000.0) < 0.01:
+                components.append("E")
+
+            # Special coolant operation
+            if abs(value - 7600.0) < 0.01:
+                components.append("F")
+
+            return components
+
+        for imported in imported_interventions:
+
+            relative_hours = float(
+                imported["engine_hours"] or 0
+            )
+
+            # Ignore imported maintenance milestones that
+            # fall outside the signed contract coverage.
+            if (
+                contract_hours > 0
+                and relative_hours > contract_hours
+            ):
+                continue
+
+            absolute_hours = (
+                start_engine_hours
+                + relative_hours
+            )
+
+            # Planned dates belong to the actual contract,
+            # not to the original Service Calculator calendar.
+            intervention_date = imported[
+                "intervention_date"
+            ]
+
+            if (
+                hours_per_year > 0
+                and relative_hours >= 0
+            ):
+                intervention_date = (
+                    start_date_obj
+                    + timedelta(
+                        days=(
+                            relative_hours
+                            / hours_per_year
+                            * 365.25
+                        )
+                    )
+                ).isoformat()
+
+            intervention_type = (
+                f"Maintenance {relative_hours:g} h"
+            )
+
+            cursor_intervention = conn.execute(
+                """
+                INSERT INTO contract_interventions (
+                    contract_id,
+                    intervention_type,
+                    reference_engine_hours,
+                    planned_engine_hours,
+                    planned_date,
+                    status,
+                    notes
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    contract_id,
+                    intervention_type,
+                    absolute_hours,
+                    absolute_hours,
+                    intervention_date,
+                    "planned",
+                    (
+                        "Generated from quote intervention "
+                        f"{relative_hours:g} h"
+                    ),
+                ),
+            )
+
+            contract_intervention_id = (
+                cursor_intervention.lastrowid
+            )
+
+            components = components_for_relative_hours(
+                relative_hours
+            )
+
+            for component in components:
+                for part in parts_by_component.get(
+                    component,
+                    [],
+                ):
+                    total_quantity = float(
+                        part["quantity"] or 0
+                    )
+
+                    # Imported quantities are totals across all
+                    # occurrences of the component.
+                    #
+                    # A/C occur 19 times.
+                    # B/D occur 4 times.
+                    # E/F occur once.
+                    divisor = 1.0
+
+                    if component in ("A", "C"):
+                        divisor = 19.0
+                    elif component in ("B", "D"):
+                        divisor = 4.0
+
+                    planned_quantity = (
+                        total_quantity / divisor
+                        if divisor
+                        else total_quantity
+                    )
+
+                    conn.execute(
+                        """
+                        INSERT INTO contract_intervention_parts (
+                            contract_intervention_id,
+                            part_number,
+                            description,
+                            planned_quantity,
+                            actual_quantity,
+                            source
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            contract_intervention_id,
+                            part["part_number"],
+                            part["description"],
+                            planned_quantity,
+                            0,
+                            f"quote_component_{component}",
+                        ),
+                    )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url=f"/contract/{contract_id}",
+        status_code=303,
+    )
+
+
+
+
+@app.post("/contract/{contract_id}/meter-reading")
+def contract_meter_reading_submit(
+    contract_id: int,
+    request: Request,
+    reading_date: str = Form(""),
+    engine_hours: float = Form(0),
+    source: str = Form("manual"),
+    notes: str = Form(""),
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    contract = get_contract_for_current_company(
+        request,
+        contract_id,
+    )
+
+    if not contract:
+        return HTMLResponse(
+            layout(
+                "Contrat introuvable",
+                """
+                <div class="card">
+                    <h3>Contrat introuvable ou non autorise.</h3>
+                    <a class="button secondary" href="/contracts">
+                        Retour contrats
+                    </a>
+                </div>
+                """,
+            ),
+            status_code=404,
+        )
+
+    from datetime import date, datetime, timedelta
+
+    reading_date = (reading_date or "").strip()
+
+    try:
+        reading_date_obj = date.fromisoformat(reading_date)
+    except Exception:
+        reading_date_obj = date.today()
+        reading_date = reading_date_obj.isoformat()
+
+    try:
+        engine_hours = float(engine_hours or 0)
+    except Exception:
+        engine_hours = 0.0
+
+    engine_hours = max(0.0, engine_hours)
+
+    allowed_sources = {
+        "manual",
+        "intervention",
+        "customer",
+        "remote",
+    }
+
+    if source not in allowed_sources:
+        source = "manual"
+
+    notes = (notes or "").strip()
+
+    start_engine_hours = float(
+        contract["start_engine_hours"] or 0
+    )
+
+    planned_end_engine_hours = float(
+        contract["planned_end_engine_hours"] or 0
+    )
+
+    fallback_hours_per_year = float(
+        contract["hours_per_year"] or 0
+    )
+
+    with get_connection() as conn:
+
+        previous = conn.execute(
+            """
+            SELECT *
+            FROM contract_meter_readings
+            WHERE contract_id = ?
+            ORDER BY reading_date DESC, id DESC
+            LIMIT 1
+            """,
+            (contract_id,),
+        ).fetchone()
+
+        if previous:
+            previous_hours = float(
+                previous["engine_hours"] or 0
+            )
+
+            if engine_hours < previous_hours:
+                content = f"""
+                <h2>Releve compteur refuse</h2>
+
+                <div class="card">
+                    <h3>Compteur inferieur au dernier releve</h3>
+
+                    <p>
+                        Dernier compteur :
+                        <strong>{previous_hours:g} h</strong>
+                    </p>
+
+                    <p>
+                        Nouveau compteur saisi :
+                        <strong>{engine_hours:g} h</strong>
+                    </p>
+
+                    <p>
+                        Le nouveau releve doit etre superieur
+                        ou egal au dernier compteur connu.
+                    </p>
+
+                    <a
+                        class="button secondary"
+                        href="/contract/{contract_id}"
+                    >
+                        Retour au contrat
+                    </a>
+                </div>
+                """
+
+                return HTMLResponse(
+                    layout(
+                        "Releve compteur refuse",
+                        content,
+                    ),
+                    status_code=400,
+                )
+
+        conn.execute(
+            """
+            INSERT INTO contract_meter_readings (
+                contract_id,
+                reading_date,
+                engine_hours,
+                source,
+                notes
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                contract_id,
+                reading_date,
+                engine_hours,
+                source,
+                notes,
+            ),
+        )
+
+        readings = conn.execute(
+            """
+            SELECT *
+            FROM contract_meter_readings
+            WHERE contract_id = ?
+            ORDER BY reading_date ASC, id ASC
+            """,
+            (contract_id,),
+        ).fetchall()
+
+        calculated_hours_per_year = (
+            fallback_hours_per_year
+        )
+
+        if len(readings) >= 2:
+            first = readings[0]
+            last = readings[-1]
+
+            try:
+                first_date = date.fromisoformat(
+                    first["reading_date"]
+                )
+
+                last_date = date.fromisoformat(
+                    last["reading_date"]
+                )
+
+                elapsed_days = (
+                    last_date - first_date
+                ).days
+
+                used_hours = (
+                    float(last["engine_hours"] or 0)
+                    - float(first["engine_hours"] or 0)
+                )
+
+                if elapsed_days > 0 and used_hours > 0:
+                    calculated_hours_per_year = (
+                        used_hours
+                        / elapsed_days
+                        * 365.25
+                    )
+            except Exception:
+                pass
+
+        planned_end_date = contract[
+            "planned_end_date"
+        ]
+
+        remaining_hours = max(
+            0.0,
+            planned_end_engine_hours
+            - engine_hours,
+        )
+
+        if (
+            calculated_hours_per_year > 0
+            and remaining_hours > 0
+        ):
+            remaining_years = (
+                remaining_hours
+                / calculated_hours_per_year
+            )
+
+            planned_end_date = (
+                reading_date_obj
+                + timedelta(
+                    days=remaining_years * 365.25
+                )
+            ).isoformat()
+
+        elif remaining_hours <= 0:
+            planned_end_date = reading_date
+
+        # Recalculate forecast dates for all future planned
+        # interventions from the latest real meter reading.
+        if calculated_hours_per_year > 0:
+            future_interventions = conn.execute(
+                """
+                SELECT id, planned_engine_hours
+                FROM contract_interventions
+                WHERE contract_id = ?
+                  AND status = 'planned'
+                  AND planned_engine_hours >= ?
+                ORDER BY planned_engine_hours, id
+                """,
+                (
+                    contract_id,
+                    engine_hours,
+                ),
+            ).fetchall()
+
+            for intervention in future_interventions:
+                intervention_hours = float(
+                    intervention["planned_engine_hours"] or 0
+                )
+
+                hours_until = max(
+                    0.0,
+                    intervention_hours - engine_hours,
+                )
+
+                intervention_date = (
+                    reading_date_obj
+                    + timedelta(
+                        days=(
+                            hours_until
+                            / calculated_hours_per_year
+                            * 365.25
+                        )
+                    )
+                ).isoformat()
+
+                conn.execute(
+                    """
+                    UPDATE contract_interventions
+                    SET planned_date = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        intervention_date,
+                        intervention["id"],
+                    ),
+                )
+
+        conn.execute(
+            """
+            UPDATE contracts
+            SET current_engine_hours = ?,
+                planned_end_date = ?
+            WHERE id = ?
+            """,
+            (
+                engine_hours,
+                planned_end_date,
+                contract_id,
+            ),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url=f"/contract/{contract_id}",
+        status_code=303,
+    )
+
+
+
+
+@app.post(
+    "/contract/{contract_id}/intervention/{intervention_id}/complete"
+)
+def contract_intervention_complete(
+    contract_id: int,
+    intervention_id: int,
+    request: Request,
+    actual_date: str = Form(""),
+    actual_engine_hours: float = Form(0),
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    contract = get_contract_for_current_company(
+        request,
+        contract_id,
+    )
+
+    if not contract:
+        return HTMLResponse(
+            layout(
+                "Contrat introuvable",
+                "<div class='card'>Contrat introuvable.</div>",
+            ),
+            status_code=404,
+        )
+
+    from datetime import date, timedelta
+
+    try:
+        actual_date_obj = date.fromisoformat(actual_date)
+    except Exception:
+        return HTMLResponse(
+            layout(
+                "Date invalide",
+                "<div class='card'>Date intervention invalide.</div>",
+            ),
+            status_code=400,
+        )
+
+    actual_engine_hours = float(actual_engine_hours or 0)
+
+    with get_connection() as conn:
+        intervention = conn.execute(
+            """
+            SELECT *
+            FROM contract_interventions
+            WHERE id = ?
+              AND contract_id = ?
+            """,
+            (
+                intervention_id,
+                contract_id,
+            ),
+        ).fetchone()
+
+        if not intervention:
+            return HTMLResponse(
+                layout(
+                    "Intervention introuvable",
+                    "<div class='card'>Intervention introuvable.</div>",
+                ),
+                status_code=404,
+            )
+
+        if intervention["status"] != "planned":
+            return RedirectResponse(
+                url=f"/contract/{contract_id}",
+                status_code=303,
+            )
+
+        planned_hours = float(
+            intervention["planned_engine_hours"] or 0
+        )
+
+        if actual_engine_hours <= 0:
+            return HTMLResponse(
+                layout(
+                    "Compteur invalide",
+                    "<div class='card'>Compteur intervention invalide.</div>",
+                ),
+                status_code=400,
+            )
+
+        latest_before = conn.execute("SELECT reading_date, engine_hours FROM contract_meter_readings WHERE contract_id = ? ORDER BY reading_date DESC, id DESC LIMIT 1", (contract_id,)).fetchone()
+        if latest_before and actual_engine_hours < float(latest_before[1] or 0):
+            return HTMLResponse(layout("Compteur invalide", "<div class='card'>Le compteur reel ne peut pas etre inferieur au dernier compteur connu.</div>"), status_code=400)
+        if latest_before and actual_date_obj < date.fromisoformat(latest_before[0]):
+            return HTMLResponse(layout("Date invalide", "<div class='card'>La date reelle ne peut pas etre anterieure au dernier releve compteur.</div>"), status_code=400)
+
+        # Preserve original reference for old test rows too.
+        conn.execute(
+            """
+            UPDATE contract_interventions
+            SET reference_engine_hours =
+                COALESCE(
+                    reference_engine_hours,
+                    planned_engine_hours
+                )
+            WHERE contract_id = ?
+            """,
+            (contract_id,),
+        )
+
+        # Difference between current forecast and actual execution.
+        delta_hours = (
+            actual_engine_hours
+            - planned_hours
+        )
+
+        conn.execute(
+            """
+            UPDATE contract_interventions
+            SET status = 'completed',
+                actual_engine_hours = ?,
+                actual_date = ?
+            WHERE id = ?
+            """,
+            (
+                actual_engine_hours,
+                actual_date,
+                intervention_id,
+            ),
+        )
+
+        # By default, actual parts equal planned parts.
+        conn.execute(
+            """
+            UPDATE contract_intervention_parts
+            SET actual_quantity = planned_quantity
+            WHERE contract_intervention_id = ?
+            """,
+            (intervention_id,),
+        )
+
+        # Store the real meter reading if it is newer/higher.
+        latest = conn.execute(
+            """
+            SELECT *
+            FROM contract_meter_readings
+            WHERE contract_id = ?
+            ORDER BY reading_date DESC, id DESC
+            LIMIT 1
+            """,
+            (contract_id,),
+        ).fetchone()
+
+        latest_hours = (
+            float(latest["engine_hours"] or 0)
+            if latest
+            else 0.0
+        )
+
+        if actual_engine_hours >= latest_hours:
+            conn.execute(
+                """
+                INSERT INTO contract_meter_readings (
+                    contract_id,
+                    reading_date,
+                    engine_hours,
+                    source,
+                    contract_intervention_id,
+                    notes
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    contract_id,
+                    actual_date,
+                    actual_engine_hours,
+                    "intervention",
+                    intervention_id,
+                    "Intervention completed",
+                ),
+            )
+
+            conn.execute(
+                """
+                UPDATE contracts
+                SET current_engine_hours = ?
+                WHERE id = ?
+                """,
+                (
+                    actual_engine_hours,
+                    contract_id,
+                ),
+            )
+
+        # Shift every future milestone by the actual delay/advance.
+        # This preserves the imported Volvo sequence, including
+        # exceptional gaps such as 7500 -> 7600 h.
+        if abs(delta_hours) > 0.0001:
+            conn.execute(
+                """
+                UPDATE contract_interventions
+                SET planned_engine_hours =
+                    planned_engine_hours + ?
+                WHERE contract_id = ?
+                  AND status = 'planned'
+                  AND planned_engine_hours > ?
+                """,
+                (
+                    delta_hours,
+                    contract_id,
+                    planned_hours,
+                ),
+            )
+
+        # Recalculate future dates from observed machine use.
+        readings = conn.execute(
+            """
+            SELECT *
+            FROM contract_meter_readings
+            WHERE contract_id = ?
+            ORDER BY reading_date ASC, id ASC
+            """,
+            (contract_id,),
+        ).fetchall()
+
+        calculated_hours_per_year = float(
+            contract["hours_per_year"] or 0
+        )
+
+        if len(readings) >= 2:
+            first = readings[0]
+            last = readings[-1]
+
+            try:
+                first_date = date.fromisoformat(
+                    first["reading_date"]
+                )
+                last_date = date.fromisoformat(
+                    last["reading_date"]
+                )
+
+                elapsed_days = (
+                    last_date - first_date
+                ).days
+
+                used_hours = (
+                    float(last["engine_hours"] or 0)
+                    - float(first["engine_hours"] or 0)
+                )
+
+                if elapsed_days > 0 and used_hours > 0:
+                    calculated_hours_per_year = (
+                        used_hours
+                        / elapsed_days
+                        * 365.25
+                    )
+            except Exception:
+                pass
+
+        if calculated_hours_per_year > 0:
+            future = conn.execute(
+                """
+                SELECT id, planned_engine_hours
+                FROM contract_interventions
+                WHERE contract_id = ?
+                  AND status = 'planned'
+                  AND planned_engine_hours > ?
+                ORDER BY planned_engine_hours, id
+                """,
+                (
+                    contract_id,
+                    actual_engine_hours,
+                ),
+            ).fetchall()
+
+            for future_row in future:
+                hours_until = (
+                    float(
+                        future_row["planned_engine_hours"]
+                        or 0
+                    )
+                    - actual_engine_hours
+                )
+
+                forecast_date = (
+                    actual_date_obj
+                    + timedelta(
+                        days=(
+                            hours_until
+                            / calculated_hours_per_year
+                            * 365.25
+                        )
+                    )
+                ).isoformat()
+
+                conn.execute(
+                    """
+                    UPDATE contract_interventions
+                    SET planned_date = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        forecast_date,
+                        future_row["id"],
+                    ),
+                )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url=f"/contract/{contract_id}",
+        status_code=303,
+    )
+
+
+@app.get(
+    "/contract/{contract_id}",
+    response_class=HTMLResponse
+)
+def contract_detail_page(
+    contract_id: int,
+    request: Request,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    contract = get_contract_for_current_company(
+        request,
+        contract_id,
+    )
+
+    if not contract:
+        return HTMLResponse(
+            layout(
+                "Contrat introuvable",
+                """
+                <div class="card">
+                    <h3>
+                        Contrat introuvable
+                        ou non autorise.
+                    </h3>
+                    <a
+                        class="button secondary"
+                        href="/contracts"
+                    >
+                        Retour contrats
+                    </a>
+                </div>
+                """,
+            ),
+            status_code=404,
+        )
+
+    with get_connection() as conn:
+        readings = conn.execute(
+            """
+            SELECT *
+            FROM contract_meter_readings
+            WHERE contract_id = ?
+            ORDER BY reading_date DESC, id DESC
+            """,
+            (contract_id,),
+        ).fetchall()
+
+    with get_connection() as conn:
+        next_intervention = conn.execute(
+            """
+            SELECT *
+            FROM contract_interventions
+            WHERE contract_id = ?
+              AND status = 'planned'
+              AND planned_engine_hours >= ?
+            ORDER BY planned_engine_hours, id
+            LIMIT 1
+            """,
+            (
+                contract_id,
+                float(contract["current_engine_hours"] or 0),
+            ),
+        ).fetchone()
+
+        next_parts = []
+
+        if next_intervention:
+            next_parts = conn.execute(
+                """
+                SELECT *
+                FROM contract_intervention_parts
+                WHERE contract_intervention_id = ?
+                ORDER BY part_number
+                """,
+                (next_intervention["id"],),
+            ).fetchall()
+
+    readings_html = ""
+
+    for reading in readings:
+        readings_html += f"""
+        <tr>
+            <td>{reading["reading_date"]}</td>
+            <td>
+                {fmt_number(reading["engine_hours"])} h
+            </td>
+            <td>{reading["source"] or "-"}</td>
+            <td>{reading["notes"] or "-"}</td>
+        </tr>
+        """
+
+    if not readings_html:
+        readings_html = """
+        <tr>
+            <td colspan="4">
+                Aucun releve compteur.
+            </td>
+        </tr>
+        """
+
+    remaining_hours = max(
+        0,
+        float(
+            contract["planned_end_engine_hours"]
+            or 0
+        )
+        - float(
+            contract["current_engine_hours"]
+            or 0
+        ),
+    )
+
+    billing_text = (
+        "Mensuelle"
+        if contract["billing_mode"] == "monthly"
+        else "A l'intervention / a la tache"
+    )
+
+    next_intervention_html = """
+    <div class="card">
+        <h3>Prochaine intervention</h3>
+        <p>Aucune intervention planifiee.</p>
+    </div>
+    """
+
+    if next_intervention:
+        current_hours = float(
+            contract["current_engine_hours"] or 0
+        )
+
+        next_hours = float(
+            next_intervention["planned_engine_hours"] or 0
+        )
+
+        hours_before = max(
+            0,
+            next_hours - current_hours,
+        )
+
+        parts_html = ""
+
+        for part in next_parts:
+            parts_html += f"""
+            <tr>
+                <td>{part["part_number"] or "-"}</td>
+                <td>{part["description"] or "-"}</td>
+                <td>{fmt_number(part["planned_quantity"])}</td>
+            </tr>
+            """
+
+        if not parts_html:
+            parts_html = """
+            <tr>
+                <td colspan="3">
+                    Aucune piece referencee.
+                </td>
+            </tr>
+            """
+
+        next_intervention_html = f"""
+        <div class="card">
+            <h3>Prochaine intervention</h3>
+
+            <div class="grid">
+                <label>
+                    Intervention
+                    <input
+                        value="{next_intervention['intervention_type']}"
+                        readonly
+                    >
+                </label>
+
+                <label>
+                    Compteur prevu
+                    <input
+                        value="{fmt_number(next_hours)} h"
+                        readonly
+                    >
+                </label>
+
+                <label>
+                    Heures restantes
+                    <input
+                        value="{fmt_number(hours_before)} h"
+                        readonly
+                    >
+                </label>
+
+                <label>
+                    Date estimee
+                    <input
+                        value="{next_intervention['planned_date'] or '-'}"
+                        readonly
+                    >
+                </label>
+            </div>
+
+            <div style="margin-top:18px;">
+                <h4>Realiser cette intervention</h4>
+
+                <form
+                    method="post"
+                    action="/contract/{contract_id}/intervention/{next_intervention['id']}/complete"
+                >
+                    <div class="grid">
+                        <label>
+                            Date reelle
+                            <input
+                                type="date"
+                                name="actual_date"
+                                value="{__import__('datetime').date.today().isoformat()}"
+                                required
+                            >
+                        </label>
+
+                        <label>
+                            Compteur reel
+                            <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                name="actual_engine_hours"
+                                value="{fmt_number(next_hours)}"
+                                required
+                            >
+                        </label>
+                    </div>
+
+                    <div style="margin-top:12px;">
+                        <button
+                            class="button green"
+                            type="submit"
+                        >
+                            Marquer comme realisee
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <h4>Pieces a preparer</h4>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Reference</th>
+                        <th>Description</th>
+                        <th>Quantite</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {parts_html}
+                </tbody>
+            </table>
+        </div>
+        """
+
+    content = f"""
+    <h2>Contrat {contract["contract_number"]}</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <h3>Informations principales</h3>
+
+        <div class="grid">
+            <label>
+                Statut
+                <input
+                    value="{contract['status'] or '-'}"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Client
+                <input
+                    value="{contract['customer_name'] or '-'}"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Machine / moteur
+                <input
+                    value="{contract['product_designation'] or contract['product_name'] or '-'}"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Numero de serie
+                <input
+                    value="{contract['engine_serial_number'] or '-'}"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Date debut
+                <input
+                    value="{contract['start_date'] or '-'}"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Date fin estimee
+                <input
+                    value="{contract['planned_end_date'] or '-'}"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Compteur debut
+                <input
+                    value="{fmt_number(contract['start_engine_hours'])} h"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Compteur actuel
+                <input
+                    value="{fmt_number(contract['current_engine_hours'])} h"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Compteur fin contractuel
+                <input
+                    value="{fmt_number(contract['planned_end_engine_hours'])} h"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Heures restantes
+                <input
+                    value="{fmt_number(remaining_hours)} h"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Heures / an
+                <input
+                    value="{fmt_number(contract['hours_per_year'])} h"
+                    readonly
+                >
+            </label>
+
+            <label>
+                Facturation
+                <input
+                    value="{billing_text}"
+                    readonly
+                >
+            </label>
+        </div>
+
+        <p>
+            <a
+                class="button secondary"
+                href="/quote/{contract['quote_id']}/inputs"
+            >
+                Voir le devis source
+            </a>
+        </p>
+    </div>
+
+    {next_intervention_html}
+
+    <div class="card">
+        <h3>Mettre a jour le compteur</h3>
+
+        <form method="post" action="/contract/{contract_id}/meter-reading">
+            <div class="grid">
+                <label>
+                    Date du releve
+                    <input
+                        type="date"
+                        name="reading_date"
+                        value="{__import__('datetime').date.today().isoformat()}"
+                        required
+                    >
+                </label>
+
+                <label>
+                    Compteur moteur
+                    <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        name="engine_hours"
+                        value="{fmt_number(contract['current_engine_hours'])}"
+                        required
+                    >
+                </label>
+
+                <label>
+                    Origine
+                    <select name="source">
+                        <option value="manual">Releve manuel</option>
+                        <option value="intervention">Intervention</option>
+                        <option value="customer">Information client</option>
+                        <option value="remote">Telemetrie / distance</option>
+                    </select>
+                </label>
+
+                <label>
+                    Note
+                    <input
+                        type="text"
+                        name="notes"
+                        placeholder="Optionnel"
+                    >
+                </label>
+            </div>
+
+            <div style="margin-top:16px;">
+                <button class="button green" type="submit">
+                    Enregistrer le nouveau compteur
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Historique compteur</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Compteur</th>
+                    <th>Origine</th>
+                    <th>Note</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {readings_html}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Prochaine etape V1.1</h3>
+        <p>
+            Ajout d'un releve compteur,
+            interventions et recalcul
+            automatique des echeances.
+        </p>
+    </div>
+
+    <a
+        class="button secondary"
+        href="/contracts"
+    >
+        Retour Mes contrats
+    </a>
+    """
+
+    return layout(
+        f"Contrat {contract['contract_number']}",
+        content,
+    )
 
 
 
