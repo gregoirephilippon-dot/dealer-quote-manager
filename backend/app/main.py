@@ -2870,7 +2870,7 @@ def contract_module_navigation():
         <a class="button green" href="/contracts">Mes contrats</a>
         <span class="button secondary">Interventions</span>
         <a class="button secondary" href="/contracts/parts-forecast">Prevision pieces</a>
-        <span class="button secondary">Planning &amp; Agenda</span>
+        <a class="button secondary" href="/contracts/planning">Planning &amp; Agenda</a>
         <span class="button secondary">Documents</span>
         <span class="button secondary">Parametres</span>
     </div>
@@ -3209,6 +3209,138 @@ def contract_parts_forecast_detail_page(
     """
 
     return layout("Detail prevision piece", content)
+
+
+
+@app.get("/contracts/planning", response_class=HTMLResponse)
+def contracts_planning_page(
+    request: Request,
+    days: int = 365,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    if days not in (30, 90, 180, 365):
+        days = 365
+
+    from datetime import date, timedelta
+
+    today = date.today()
+    limit_date = today + timedelta(days=days)
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+    company_name = get_active_company_name_for_request(request)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                i.id AS intervention_id,
+                i.intervention_type,
+                i.planned_engine_hours,
+                i.planned_date,
+                c.id AS contract_id,
+                c.contract_number,
+                c.customer_name,
+                c.product_designation,
+                c.engine_serial_number
+            FROM contract_interventions i
+            JOIN contracts c
+              ON c.id = i.contract_id
+            WHERE i.status = 'planned'
+              AND c.company_id = ?
+              AND i.planned_date IS NOT NULL
+              AND i.planned_date >= ?
+              AND i.planned_date <= ?
+            ORDER BY
+                i.planned_date,
+                c.contract_number,
+                i.planned_engine_hours
+            """,
+            (
+                company_id,
+                today.isoformat(),
+                limit_date.isoformat(),
+            ),
+        ).fetchall()
+
+    rows_html = ""
+
+    for row in rows:
+        rows_html += f"""
+        <tr>
+            <td>{row["planned_date"] or "-"}</td>
+            <td>
+                <a href="/contract/{row["contract_id"]}">
+                    {row["contract_number"]}
+                </a>
+            </td>
+            <td>{row["customer_name"] or "-"}</td>
+            <td>{row["product_designation"] or "-"}</td>
+            <td>{row["engine_serial_number"] or "-"}</td>
+            <td>{row["intervention_type"] or "-"}</td>
+            <td>{fmt_number(row["planned_engine_hours"])} h</td>
+        </tr>
+        """
+
+    if not rows_html:
+        rows_html = """
+        <tr>
+            <td colspan="7">
+                Aucune intervention planifiee sur cette periode.
+            </td>
+        </tr>
+        """
+
+    content = f"""
+    <h2>Planning &amp; Agenda</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <strong>Societe active :</strong> {company_name}
+    </div>
+
+    <div class="card">
+        <h3>Interventions a venir</h3>
+
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+            <a class="button secondary" href="/contracts/planning?days=30">30 jours</a>
+            <a class="button secondary" href="/contracts/planning?days=90">90 jours</a>
+            <a class="button secondary" href="/contracts/planning?days=180">180 jours</a>
+            <a class="button secondary" href="/contracts/planning?days=365">365 jours</a>
+        </div>
+
+        <p>
+            <strong>Periode affichee :</strong>
+            {days} jours
+        </p>
+
+        <div style="overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Contrat</th>
+                        <th>Client</th>
+                        <th>Machine / moteur</th>
+                        <th>No serie</th>
+                        <th>Intervention</th>
+                        <th>Compteur prevu</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    """
+
+    return layout("Planning & Agenda", content)
 
 
 @app.get(
