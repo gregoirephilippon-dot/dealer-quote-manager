@@ -3404,12 +3404,38 @@ def contract_recipients_page(request: Request):
             (company_id,),
         ).fetchall()
 
+        rules = conn.execute(
+            """
+            SELECT
+                r.id,
+                r.profile_id,
+                r.rule_key,
+                r.event_type,
+                r.trigger_type,
+                r.trigger_value,
+                r.is_active
+            FROM contract_delivery_rules r
+            JOIN contract_delivery_profiles p
+              ON p.id = r.profile_id
+            WHERE p.company_id = ?
+            ORDER BY p.id, r.id
+            """,
+            (company_id,),
+        ).fetchall()
+
     recipients_by_profile = {}
     for recipient in recipients:
         recipients_by_profile.setdefault(
             int(recipient["profile_id"]),
             [],
         ).append(recipient)
+
+    rules_by_profile = {}
+    for rule in rules:
+        rules_by_profile.setdefault(
+            int(rule["profile_id"]),
+            [],
+        ).append(rule)
 
     profile_html = ""
 
@@ -3431,7 +3457,9 @@ def contract_recipients_page(request: Request):
             recipient_id = int(recipient["id"])
             recipient_name = html_escape(str(recipient["recipient_name"] or ""))
             email = html_escape(str(recipient["email"] or ""))
-            active_text = "Oui" if int(recipient["is_active"] or 0) else "Non"
+            is_recipient_active = bool(int(recipient["is_active"] or 0))
+            active_text = "Oui" if is_recipient_active else "Non"
+            toggle_recipient_text = "Desactiver" if is_recipient_active else "Activer"
             ics_text = "Oui" if int(recipient["attach_ics"] or 0) else "Non"
 
             rows_html += f"""
@@ -3445,7 +3473,7 @@ def contract_recipients_page(request: Request):
                           method="post"
                           style="display:inline;">
                         <button class="button secondary" type="submit">
-                            Activer / desactiver
+                            {toggle_recipient_text}
                         </button>
                     </form>
 
@@ -3469,6 +3497,88 @@ def contract_recipients_page(request: Request):
             """
 
         description = descriptions.get(profile_key, "")
+
+        rules_rows_html = ""
+
+        for rule in rules_by_profile.get(profile_id, []):
+            rule_id = int(rule["id"])
+            event_type = str(rule["event_type"] or "")
+            trigger_type = str(rule["trigger_type"] or "")
+            trigger_value = float(rule["trigger_value"] or 0)
+            is_rule_active = bool(int(rule["is_active"] or 0))
+            active_text = "Oui" if is_rule_active else "Non"
+            toggle_rule_text = "Desactiver" if is_rule_active else "Activer"
+
+            if trigger_type == "hours_before":
+                rule_label = f"{trigger_value:g} h avant intervention"
+            elif event_type == "billing":
+                rule_label = f"{trigger_value:g} jours avant echeance de facturation"
+            elif event_type == "contract_end":
+                rule_label = f"{trigger_value:g} jours avant fin / renouvellement du contrat"
+            else:
+                rule_label = f"{trigger_value:g} jours avant intervention"
+
+            rules_rows_html += f"""
+            <tr>
+                <td>{rule_label}</td>
+                <td>{active_text}</td>
+                <td style="white-space:nowrap;">
+                    <form action="/contracts/settings/rules/{rule_id}/toggle"
+                          method="post"
+                          style="display:inline;">
+                        <button class="button secondary" type="submit">
+                            {toggle_rule_text}
+                        </button>
+                    </form>
+
+                    <form action="/contracts/settings/rules/{rule_id}/delete"
+                          method="post"
+                          style="display:inline;"
+                          onsubmit="return confirm('Supprimer cette regle ?');">
+                        <button type="submit">Supprimer</button>
+                    </form>
+                </td>
+            </tr>
+            """
+
+        if not rules_rows_html:
+            rules_rows_html = """
+            <tr>
+                <td colspan="3" class="muted">
+                    Aucune regle automatique configuree.
+                </td>
+            </tr>
+            """
+
+        if profile_key in ("atelier", "magasin"):
+            event_type_value = "intervention"
+            trigger_field_html = """
+                <label>
+                    Type de seuil
+                    <select name="trigger_type">
+                        <option value="hours_before">Heures avant intervention</option>
+                        <option value="days_before">Jours avant intervention</option>
+                    </select>
+                </label>
+            """
+        elif profile_key == "facturation":
+            event_type_value = "billing"
+            trigger_field_html = """
+                <input type="hidden" name="trigger_type" value="days_before">
+                <label>
+                    Type de seuil
+                    <input value="Jours avant echeance contractuelle" readonly>
+                </label>
+            """
+        else:
+            event_type_value = "contract_end"
+            trigger_field_html = """
+                <input type="hidden" name="trigger_type" value="days_before">
+                <label>
+                    Type de seuil
+                    <input value="Jours avant fin / renouvellement" readonly>
+                </label>
+            """
 
         profile_html += f"""
         <div class="card">
@@ -3519,11 +3629,55 @@ def contract_recipients_page(request: Request):
 
                 <button type="submit">Ajouter le destinataire</button>
             </form>
+
+            <hr style="margin:24px 0;">
+
+            <h4>Regles automatiques</h4>
+
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Declenchement</th>
+                            <th>Actif</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rules_rows_html}
+                    </tbody>
+                </table>
+            </div>
+
+            <form action="/contracts/settings/rules/add"
+                  method="post"
+                  style="margin-top:16px;">
+
+                <input type="hidden" name="profile_id" value="{profile_id}">
+                <input type="hidden" name="event_type" value="{event_type_value}">
+
+                <div class="grid">
+                    {trigger_field_html}
+
+                    <label>
+                        Valeur du seuil
+                        <input
+                            type="number"
+                            name="trigger_value"
+                            min="0"
+                            step="1"
+                            required
+                        >
+                    </label>
+                </div>
+
+                <button type="submit">Ajouter la regle</button>
+            </form>
         </div>
         """
 
     content = f"""
-    <h2>Parametres contrats - Destinataires</h2>
+    <h2>Parametres contrats - Diffusion</h2>
 
     {contract_module_navigation()}
 
@@ -3538,7 +3692,7 @@ def contract_recipients_page(request: Request):
     {profile_html}
     """
 
-    return layout("Destinataires contrats", content)
+    return layout("Diffusion contrats", content)
 
 
 @app.post("/contracts/settings/recipients/add")
@@ -3712,6 +3866,220 @@ def contract_recipient_delete(recipient_id: int, request: Request):
             conn.execute(
                 "DELETE FROM contract_delivery_recipients WHERE id = ?",
                 (recipient_id,),
+            )
+            conn.commit()
+
+    return RedirectResponse(
+        url="/contracts/settings/recipients",
+        status_code=303,
+    )
+
+
+
+@app.post("/contracts/settings/rules/add")
+def contract_delivery_rule_add(
+    request: Request,
+    profile_id: int = Form(...),
+    event_type: str = Form(...),
+    trigger_type: str = Form(...),
+    trigger_value: float = Form(...),
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    role = str(context.get("role") or "").upper()
+    if role not in ("OWNER", "SUPER_ADMIN", "COMPANY_ADMIN"):
+        return admin_required_page()
+
+    company_id = get_active_company_id_for_request(request)
+
+    if trigger_value < 0:
+        return HTMLResponse(
+            layout(
+                "Regle invalide",
+                "<div class='card'>Le seuil ne peut pas etre negatif.</div>",
+            ),
+            status_code=400,
+        )
+
+    with get_connection() as conn:
+        profile = conn.execute(
+            """
+            SELECT id, profile_key
+            FROM contract_delivery_profiles
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (profile_id, company_id),
+        ).fetchone()
+
+        if not profile:
+            return HTMLResponse(
+                layout(
+                    "Profil invalide",
+                    "<div class='card'>Profil de diffusion introuvable.</div>",
+                ),
+                status_code=404,
+            )
+
+        profile_key = str(profile["profile_key"] or "")
+
+        allowed = {
+            "atelier": {
+                ("intervention", "hours_before"),
+                ("intervention", "days_before"),
+            },
+            "magasin": {
+                ("intervention", "hours_before"),
+                ("intervention", "days_before"),
+            },
+            "facturation": {
+                ("billing", "days_before"),
+            },
+            "commerce": {
+                ("contract_end", "days_before"),
+            },
+        }
+
+        if (
+            profile_key not in allowed
+            or (event_type, trigger_type) not in allowed[profile_key]
+        ):
+            return HTMLResponse(
+                layout(
+                    "Regle invalide",
+                    "<div class='card'>Cette regle n'est pas autorisee pour ce profil.</div>",
+                ),
+                status_code=400,
+            )
+
+        normalized_value = f"{float(trigger_value):g}"
+        rule_key = f"{event_type}:{trigger_type}:{normalized_value}"
+
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO contract_delivery_rules (
+                profile_id,
+                rule_key,
+                event_type,
+                trigger_type,
+                trigger_value,
+                is_active
+            )
+            VALUES (?, ?, ?, ?, ?, 1)
+            """,
+            (
+                profile_id,
+                rule_key,
+                event_type,
+                trigger_type,
+                float(trigger_value),
+            ),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url="/contracts/settings/recipients",
+        status_code=303,
+    )
+
+
+@app.post("/contracts/settings/rules/{rule_id}/toggle")
+def contract_delivery_rule_toggle(rule_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    role = str(context.get("role") or "").upper()
+    if role not in ("OWNER", "SUPER_ADMIN", "COMPANY_ADMIN"):
+        return admin_required_page()
+
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        rule = conn.execute(
+            """
+            SELECT r.id, r.is_active
+            FROM contract_delivery_rules r
+            JOIN contract_delivery_profiles p
+              ON p.id = r.profile_id
+            WHERE r.id = ?
+              AND p.company_id = ?
+            """,
+            (rule_id, company_id),
+        ).fetchone()
+
+        if not rule:
+            return HTMLResponse(
+                layout(
+                    "Regle introuvable",
+                    "<div class='card'>Regle introuvable.</div>",
+                ),
+                status_code=404,
+            )
+
+        new_value = 0 if int(rule["is_active"] or 0) else 1
+
+        conn.execute(
+            """
+            UPDATE contract_delivery_rules
+            SET is_active = ?
+            WHERE id = ?
+            """,
+            (new_value, rule_id),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url="/contracts/settings/recipients",
+        status_code=303,
+    )
+
+
+@app.post("/contracts/settings/rules/{rule_id}/delete")
+def contract_delivery_rule_delete(rule_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    role = str(context.get("role") or "").upper()
+    if role not in ("OWNER", "SUPER_ADMIN", "COMPANY_ADMIN"):
+        return admin_required_page()
+
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        rule = conn.execute(
+            """
+            SELECT r.id
+            FROM contract_delivery_rules r
+            JOIN contract_delivery_profiles p
+              ON p.id = r.profile_id
+            WHERE r.id = ?
+              AND p.company_id = ?
+            """,
+            (rule_id, company_id),
+        ).fetchone()
+
+        if rule:
+            conn.execute(
+                "DELETE FROM contract_delivery_rules WHERE id = ?",
+                (rule_id,),
             )
             conn.commit()
 

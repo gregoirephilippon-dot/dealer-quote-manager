@@ -217,6 +217,55 @@ def init_db():
             );
 
 
+            CREATE TABLE IF NOT EXISTS contract_delivery_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id INTEGER NOT NULL,
+                rule_key TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                trigger_type TEXT NOT NULL,
+                trigger_value REAL,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                UNIQUE(profile_id, rule_key),
+
+                FOREIGN KEY(profile_id)
+                    REFERENCES contract_delivery_profiles(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS contract_delivery_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL,
+                profile_id INTEGER NOT NULL,
+                recipient_id INTEGER,
+                rule_id INTEGER,
+                event_key TEXT NOT NULL,
+                event_uid TEXT NOT NULL,
+                event_revision INTEGER DEFAULT 0,
+                subject TEXT,
+                status TEXT NOT NULL,
+                sent_at TEXT,
+                error_message TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                UNIQUE(
+                    recipient_id,
+                    rule_id,
+                    event_key,
+                    event_revision
+                ),
+
+                FOREIGN KEY(profile_id)
+                    REFERENCES contract_delivery_profiles(id),
+
+                FOREIGN KEY(recipient_id)
+                    REFERENCES contract_delivery_recipients(id),
+
+                FOREIGN KEY(rule_id)
+                    REFERENCES contract_delivery_rules(id)
+            );
+
+
             CREATE TABLE IF NOT EXISTS contract_intervention_parts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 contract_intervention_id INTEGER NOT NULL,
