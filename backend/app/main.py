@@ -1802,7 +1802,7 @@ def archives_page(request: Request):
             WHERE q.company_id = ? AND q.status = 'archived'
             ORDER BY q.created_at DESC
             """,
-            (company_id,),
+            (company_id, today.isoformat(), limit_date.isoformat()),
         ).fetchall()
 
     table_rows = ""
@@ -2869,7 +2869,7 @@ def contract_module_navigation():
         <a class="button secondary" href="/contracts">Tableau de bord</a>
         <a class="button green" href="/contracts">Mes contrats</a>
         <span class="button secondary">Interventions</span>
-        <span class="button secondary">Prevision pieces</span>
+        <a class="button secondary" href="/contracts/parts-forecast">Prevision pieces</a>
         <span class="button secondary">Planning &amp; Agenda</span>
         <span class="button secondary">Documents</span>
         <span class="button secondary">Parametres</span>
@@ -2976,6 +2976,239 @@ def contracts_page(request: Request):
     """
 
     return layout("Contrats", content)
+
+
+
+@app.get("/contracts/parts-forecast", response_class=HTMLResponse)
+def contract_parts_forecast_page(request: Request, days: int = 365):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    if days not in (30, 90, 180, 365):
+        days = 365
+
+    from datetime import date, timedelta
+    today = date.today()
+    limit_date = today + timedelta(days=days)
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+    company_name = get_active_company_name_for_request(request)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                p.part_number,
+                p.description,
+                SUM(p.planned_quantity) AS total_quantity,
+                COUNT(DISTINCT i.contract_id) AS contract_count,
+                COUNT(DISTINCT i.id) AS intervention_count
+            FROM contract_intervention_parts p
+            JOIN contract_interventions i
+              ON i.id = p.contract_intervention_id
+            JOIN contracts c
+              ON c.id = i.contract_id
+            WHERE i.status = 'planned'
+              AND c.company_id = ?
+              AND i.planned_date IS NOT NULL
+              AND i.planned_date >= ?
+              AND i.planned_date <= ?
+            GROUP BY p.part_number, p.description
+            ORDER BY total_quantity DESC, p.part_number
+            LIMIT 10
+            """,
+            (company_id, today.isoformat(), limit_date.isoformat()),
+        ).fetchall()
+
+    rows_html = ""
+
+    for row in rows:
+        rows_html += f"""
+        <tr>
+            <td><strong><a href="/contracts/parts-forecast/{row['part_number']}?days={days}">{row["part_number"] or "-"}</a></strong></td>
+            <td>{row["description"] or "-"}</td>
+            <td>{fmt_number(row["total_quantity"])}</td>
+            <td>{row["contract_count"]}</td>
+            <td>{row["intervention_count"]}</td>
+        </tr>
+        """
+
+    if not rows_html:
+        rows_html = """
+        <tr>
+            <td colspan="5">Aucune piece planifiee.</td>
+        </tr>
+        """
+
+    content = f"""
+    <h2>Prevision pieces</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <strong>Societe active :</strong> {company_name}
+    </div>
+
+    <div class="card">
+        <h3>Top 10 pieces a prevoir</h3>
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+            <a class="button secondary" href="/contracts/parts-forecast?days=30">30 jours</a>
+            <a class="button secondary" href="/contracts/parts-forecast?days=90">90 jours</a>
+            <a class="button secondary" href="/contracts/parts-forecast?days=180">180 jours</a>
+            <a class="button secondary" href="/contracts/parts-forecast?days=365">365 jours</a>
+        </div>
+        <p><strong>Periode affichee :</strong> {days} jours</p>
+
+        <div style="overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Reference</th>
+                        <th>Designation</th>
+                        <th>Quantite prevue</th>
+                        <th>Contrats</th>
+                        <th>Interventions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    """
+
+    return layout("Prevision pieces", content)
+
+
+
+@app.get("/contracts/parts-forecast/{part_number}", response_class=HTMLResponse)
+def contract_parts_forecast_detail_page(
+    part_number: str,
+    request: Request,
+    days: int = 365,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    if days not in (30, 90, 180, 365):
+        days = 365
+
+    from datetime import date, timedelta
+
+    today = date.today()
+    limit_date = today + timedelta(days=days)
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                c.id AS contract_id,
+                c.contract_number,
+                c.customer_name,
+                i.intervention_type,
+                i.planned_date,
+                i.planned_engine_hours,
+                p.description,
+                p.planned_quantity
+            FROM contract_intervention_parts p
+            JOIN contract_interventions i
+              ON i.id = p.contract_intervention_id
+            JOIN contracts c
+              ON c.id = i.contract_id
+            WHERE p.part_number = ?
+              AND i.status = 'planned'
+              AND c.company_id = ?
+              AND i.planned_date IS NOT NULL
+              AND i.planned_date >= ?
+              AND i.planned_date <= ?
+            ORDER BY i.planned_date, c.contract_number
+            """,
+            (
+                part_number,
+                company_id,
+                today.isoformat(),
+                limit_date.isoformat(),
+            ),
+        ).fetchall()
+
+    rows_html = ""
+
+    for row in rows:
+        rows_html += f"""
+        <tr>
+            <td>
+                <a href="/contract/{row["contract_id"]}">
+                    {row["contract_number"]}
+                </a>
+            </td>
+            <td>{row["customer_name"] or "-"}</td>
+            <td>{row["intervention_type"] or "-"}</td>
+            <td>{row["planned_date"] or "-"}</td>
+            <td>{fmt_number(row["planned_engine_hours"])} h</td>
+            <td>{fmt_number(row["planned_quantity"])}</td>
+        </tr>
+        """
+
+    if not rows_html:
+        rows_html = """
+        <tr>
+            <td colspan="6">Aucun besoin planifie pour cette periode.</td>
+        </tr>
+        """
+
+    description = rows[0]["description"] if rows else "-"
+
+    content = f"""
+    <h2>Detail prevision piece</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <strong>Reference :</strong> {part_number}<br>
+        <strong>Designation :</strong> {description}<br>
+        <strong>Periode :</strong> {days} jours
+    </div>
+
+    <div class="card">
+        <a class="button secondary"
+           href="/contracts/parts-forecast?days={days}">
+            Retour a la prevision pieces
+        </a>
+    </div>
+
+    <div class="card">
+        <h3>Contrats et interventions concernes</h3>
+
+        <div style="overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Contrat</th>
+                        <th>Client</th>
+                        <th>Intervention</th>
+                        <th>Date prevue</th>
+                        <th>Compteur prevu</th>
+                        <th>Quantite</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    """
+
+    return layout("Detail prevision piece", content)
 
 
 @app.get(
