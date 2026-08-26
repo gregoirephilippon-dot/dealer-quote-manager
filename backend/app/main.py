@@ -3445,10 +3445,9 @@ def contract_delivery_history_page(
     rows_html = ""
 
     for row in rows:
-        sent_at = (
+        sent_at = format_paris_datetime(
             row["sent_at"]
             or row["created_at"]
-            or "-"
         )
 
         profile_name = html_escape(
@@ -3989,7 +3988,7 @@ def contract_recipients_page(request: Request):
 
 
 
-@app.post("/contracts/settings/profiles/{profile_id}/test")
+@app.post("/contracts/settings/profiles/{profile_id}/test", response_class=HTMLResponse)
 def contract_delivery_profile_test(
     profile_id: int,
     request: Request,
@@ -4184,17 +4183,97 @@ def contract_delivery_profile_test(
             event_key=f"test-{profile_key}",
         )
 
+        test_event_key = (
+            f"test:{profile_key}:{uid_stamp}:{recipient['id']}"
+        )
+        test_event_uid = (
+            f"dqm:test:{company_id}:{profile_id}:"
+            f"{uid_stamp}:{recipient['id']}"
+            "@dealer-quote-manager"
+        )
+
         try:
             _send_email_smtp(message)
             sent.append(email)
 
+            with get_connection() as log_conn:
+                log_conn.execute(
+                    """
+                    INSERT INTO contract_delivery_log (
+                        company_id,
+                        profile_id,
+                        recipient_id,
+                        rule_id,
+                        event_key,
+                        event_uid,
+                        event_revision,
+                        subject,
+                        status,
+                        sent_at,
+                        error_message
+                    )
+                    VALUES (
+                        ?, ?, ?, NULL, ?, ?, 0, ?,
+                        'sent',
+                        CURRENT_TIMESTAMP,
+                        NULL
+                    )
+                    """,
+                    (
+                        company_id,
+                        profile_id,
+                        recipient["id"],
+                        test_event_key,
+                        test_event_uid,
+                        subject,
+                    ),
+                )
+                log_conn.commit()
+
         except Exception as exc:
+            error_text = str(exc)
+
             errors.append(
                 (
                     email,
-                    str(exc),
+                    error_text,
                 )
             )
+
+            with get_connection() as log_conn:
+                log_conn.execute(
+                    """
+                    INSERT INTO contract_delivery_log (
+                        company_id,
+                        profile_id,
+                        recipient_id,
+                        rule_id,
+                        event_key,
+                        event_uid,
+                        event_revision,
+                        subject,
+                        status,
+                        sent_at,
+                        error_message
+                    )
+                    VALUES (
+                        ?, ?, ?, NULL, ?, ?, 0, ?,
+                        'error',
+                        NULL,
+                        ?
+                    )
+                    """,
+                    (
+                        company_id,
+                        profile_id,
+                        recipient["id"],
+                        test_event_key,
+                        test_event_uid,
+                        subject,
+                        error_text,
+                    ),
+                )
+                log_conn.commit()
 
     sent_html = ""
 
@@ -4250,8 +4329,8 @@ def contract_delivery_profile_test(
         </ul>
 
         <p class="muted">
-            Ce test n'est pas ajoute a l'historique
-            des echeances contractuelles.
+            Ce test est ajoute a l'historique de diffusion
+            et clairement identifie par [TEST].
         </p>
 
         <a
@@ -9056,6 +9135,34 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
             html = html.replace(link, "")
 
     from fastapi.responses import HTMLResponse
+from zoneinfo import ZoneInfo
+
+PARIS_TIMEZONE = ZoneInfo("Europe/Paris")
+
+
+def format_paris_datetime(value):
+    if not value:
+        return "-"
+
+    from datetime import datetime, timezone
+
+    text = str(value).strip()
+
+    try:
+        dt = datetime.fromisoformat(
+            text.replace("Z", "+00:00")
+        )
+    except ValueError:
+        return text
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    dt = dt.astimezone(PARIS_TIMEZONE)
+
+    return dt.strftime("%d/%m/%Y %H:%M")
+
+
 
     clean_headers = dict(response.headers)
     clean_headers.pop("content-length", None)
