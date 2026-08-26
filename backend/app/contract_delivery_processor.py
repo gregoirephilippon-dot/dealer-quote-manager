@@ -226,141 +226,142 @@ def process_company_delivery(
                 status = "error"
                 error_message = str(exc)
 
-        if sent_ok:
-            conn.execute(
-                """
-                INSERT INTO contract_delivery_log (
-                    company_id,
-                    profile_id,
-                    recipient_id,
-                    rule_id,
-                    event_key,
-                    event_uid,
-                    event_revision,
-                    subject,
-                    status,
-                    sent_at,
-                    error_message
-                )
-                VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?,
-                    CURRENT_TIMESTAMP,
-                    NULL
-                )
-                ON CONFLICT(
-                    recipient_id,
-                    rule_id,
-                    event_key,
-                    event_revision
-                )
-                DO UPDATE SET
-                    company_id =
-                        excluded.company_id,
-                    profile_id =
-                        excluded.profile_id,
-                    event_uid =
-                        excluded.event_uid,
-                    subject =
-                        excluded.subject,
-                    status =
-                        excluded.status,
-                    sent_at =
+        if not dry_run:
+            if sent_ok:
+                conn.execute(
+                    """
+                    INSERT INTO contract_delivery_log (
+                        company_id,
+                        profile_id,
+                        recipient_id,
+                        rule_id,
+                        event_key,
+                        event_uid,
+                        event_revision,
+                        subject,
+                        status,
+                        sent_at,
+                        error_message
+                    )
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?,
                         CURRENT_TIMESTAMP,
-                    error_message =
                         NULL
-                """,
-                (
-                    int(event["company_id"]),
-                    int(event["profile_id"]),
-                    int(event["recipient_id"]),
-                    int(event["rule_id"]),
-                    str(event["event_key"]),
-                    str(event["event_uid"]),
-                    event_revision,
-                    subject,
-                    status,
-                ),
-            )
-
-        else:
+                    )
+                    ON CONFLICT(
+                        recipient_id,
+                        rule_id,
+                        event_key,
+                        event_revision
+                    )
+                    DO UPDATE SET
+                        company_id =
+                            excluded.company_id,
+                        profile_id =
+                            excluded.profile_id,
+                        event_uid =
+                            excluded.event_uid,
+                        subject =
+                            excluded.subject,
+                        status =
+                            excluded.status,
+                        sent_at =
+                            CURRENT_TIMESTAMP,
+                        error_message =
+                            NULL
+                    """,
+                    (
+                        int(event["company_id"]),
+                        int(event["profile_id"]),
+                        int(event["recipient_id"]),
+                        int(event["rule_id"]),
+                        str(event["event_key"]),
+                        str(event["event_uid"]),
+                        event_revision,
+                        subject,
+                        status,
+                    ),
+                )
+    
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO contract_delivery_log (
+                        company_id,
+                        profile_id,
+                        recipient_id,
+                        rule_id,
+                        event_key,
+                        event_uid,
+                        event_revision,
+                        subject,
+                        status,
+                        sent_at,
+                        error_message
+                    )
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?,
+                        NULL,
+                        ?
+                    )
+                    ON CONFLICT(
+                        recipient_id,
+                        rule_id,
+                        event_key,
+                        event_revision
+                    )
+                    DO UPDATE SET
+                        company_id =
+                            excluded.company_id,
+                        profile_id =
+                            excluded.profile_id,
+                        event_uid =
+                            excluded.event_uid,
+                        subject =
+                            excluded.subject,
+                        status =
+                            excluded.status,
+                        sent_at =
+                            NULL,
+                        error_message =
+                            excluded.error_message
+                    """,
+                    (
+                        int(event["company_id"]),
+                        int(event["profile_id"]),
+                        int(event["recipient_id"]),
+                        int(event["rule_id"]),
+                        str(event["event_key"]),
+                        str(event["event_uid"]),
+                        event_revision,
+                        subject,
+                        status,
+                        error_message,
+                    ),
+                )
+    
             conn.execute(
                 """
-                INSERT INTO contract_delivery_log (
-                    company_id,
-                    profile_id,
-                    recipient_id,
-                    rule_id,
-                    event_key,
-                    event_uid,
-                    event_revision,
-                    subject,
-                    status,
-                    sent_at,
-                    error_message
-                )
-                VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?,
-                    NULL,
-                    ?
-                )
-                ON CONFLICT(
-                    recipient_id,
-                    rule_id,
-                    event_key,
-                    event_revision
-                )
-                DO UPDATE SET
-                    company_id =
-                        excluded.company_id,
-                    profile_id =
-                        excluded.profile_id,
-                    event_uid =
-                        excluded.event_uid,
-                    subject =
-                        excluded.subject,
-                    status =
-                        excluded.status,
-                    sent_at =
-                        NULL,
-                    error_message =
-                        excluded.error_message
+                UPDATE contract_delivery_log
+                SET event_date = ?
+                WHERE company_id = ?
+                  AND recipient_id = ?
+                  AND rule_id = ?
+                  AND event_key = ?
+                  AND event_revision = ?
                 """,
                 (
+                    event_date,
                     int(event["company_id"]),
-                    int(event["profile_id"]),
                     int(event["recipient_id"]),
                     int(event["rule_id"]),
                     str(event["event_key"]),
-                    str(event["event_uid"]),
                     event_revision,
-                    subject,
-                    status,
-                    error_message,
                 ),
             )
-
-        conn.execute(
-            """
-            UPDATE contract_delivery_log
-            SET event_date = ?
-            WHERE company_id = ?
-              AND recipient_id = ?
-              AND rule_id = ?
-              AND event_key = ?
-              AND event_revision = ?
-            """,
-            (
-                event_date,
-                int(event["company_id"]),
-                int(event["recipient_id"]),
-                int(event["rule_id"]),
-                str(event["event_key"]),
-                event_revision,
-            ),
-        )
-
+    
         results.append(
             {
                 "company_id":
@@ -404,6 +405,7 @@ def process_company_delivery(
             }
         )
 
-        conn.commit()
+        if not dry_run:
+            conn.commit()
 
     return results
