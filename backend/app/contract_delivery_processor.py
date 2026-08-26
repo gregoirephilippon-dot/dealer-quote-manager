@@ -283,7 +283,7 @@ def process_company_delivery(
                         status,
                     ),
                 )
-    
+
             else:
                 conn.execute(
                     """
@@ -341,7 +341,7 @@ def process_company_delivery(
                         error_message,
                     ),
                 )
-    
+
             conn.execute(
                 """
                 UPDATE contract_delivery_log
@@ -361,7 +361,7 @@ def process_company_delivery(
                     event_revision,
                 ),
             )
-    
+
         results.append(
             {
                 "company_id":
