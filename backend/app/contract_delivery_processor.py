@@ -201,6 +201,12 @@ def process_company_delivery(
             or 0
         )
 
+        event_date = (
+            str(event.get("event_date"))
+            if event.get("event_date")
+            else None
+        )
+
         status = "simulated"
         error_message = None
         sent_ok = False
@@ -334,6 +340,26 @@ def process_company_delivery(
                     error_message,
                 ),
             )
+
+        conn.execute(
+            """
+            UPDATE contract_delivery_log
+            SET event_date = ?
+            WHERE company_id = ?
+              AND recipient_id = ?
+              AND rule_id = ?
+              AND event_key = ?
+              AND event_revision = ?
+            """,
+            (
+                event_date,
+                int(event["company_id"]),
+                int(event["recipient_id"]),
+                int(event["rule_id"]),
+                str(event["event_key"]),
+                event_revision,
+            ),
+        )
 
         results.append(
             {

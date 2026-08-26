@@ -436,6 +436,38 @@ def evaluate_delivery_events(
     return results
 
 
+def _delivery_event_date(event):
+    profile_key = str(
+        event.get("profile_key") or ""
+    )
+
+    if profile_key in (
+        "atelier",
+        "magasin",
+    ):
+        value = event.get(
+            "planned_date"
+        )
+
+    elif profile_key == "facturation":
+        value = event.get(
+            "due_date"
+        )
+
+    elif profile_key == "commerce":
+        value = event.get(
+            "planned_end_date"
+        )
+
+    else:
+        value = None
+
+    if not value:
+        return None
+
+    return str(value)
+
+
 def evaluate_pending_delivery_events(
     conn,
     company_id,
@@ -450,18 +482,24 @@ def evaluate_pending_delivery_events(
     pending = []
 
     for event in candidates:
-        event_revision = 0
+        event_date = _delivery_event_date(
+            event
+        )
 
-        already_sent = conn.execute(
+        latest_sent = conn.execute(
             """
-            SELECT id
+            SELECT
+                event_revision,
+                event_date
             FROM contract_delivery_log
             WHERE company_id = ?
               AND recipient_id = ?
               AND rule_id = ?
               AND event_key = ?
-              AND event_revision = ?
               AND status = 'sent'
+            ORDER BY
+                event_revision DESC,
+                id DESC
             LIMIT 1
             """,
             (
@@ -469,15 +507,48 @@ def evaluate_pending_delivery_events(
                 int(event["recipient_id"]),
                 int(event["rule_id"]),
                 str(event["event_key"]),
-                event_revision,
             ),
         ).fetchone()
 
-        if already_sent:
-            continue
+        if latest_sent is None:
+            event_revision = 0
+
+        else:
+            latest_revision = int(
+                latest_sent["event_revision"]
+                or 0
+            )
+
+            latest_date = (
+                str(latest_sent["event_date"])
+                if latest_sent["event_date"]
+                else None
+            )
+
+            # Ancien envoi effectué avant l'ajout
+            # de event_date :
+            # on ne renvoie pas automatiquement.
+            if latest_date is None:
+                continue
+
+            # Même date = événement déjà envoyé.
+            if latest_date == event_date:
+                continue
+
+            # Date modifiée = nouvelle révision.
+            event_revision = (
+                latest_revision + 1
+            )
 
         result = dict(event)
-        result["event_revision"] = event_revision
+
+        result["event_revision"] = (
+            event_revision
+        )
+
+        result["event_date"] = (
+            event_date
+        )
 
         pending.append(result)
 
@@ -887,6 +958,7 @@ def prepare_delivery_ics(
         "METHOD:PUBLISH",
         "BEGIN:VEVENT",
         f"UID:{_escape_ics_text(uid)}",
+        f"SEQUENCE:{int(event.get('event_revision') or 0)}",
         f"DTSTART;VALUE=DATE:{date_text}",
         f"DTEND;VALUE=DATE:{end_date_text}",
         (

@@ -262,6 +262,7 @@ def init_db():
                 event_key TEXT NOT NULL,
                 event_uid TEXT NOT NULL,
                 event_revision INTEGER DEFAULT 0,
+                event_date TEXT,
                 subject TEXT,
                 status TEXT NOT NULL,
                 sent_at TEXT,
@@ -302,6 +303,22 @@ def init_db():
             """
         )
 
+        delivery_log_columns = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(contract_delivery_log)"
+            ).fetchall()
+        }
+
+        if "event_date" not in delivery_log_columns:
+            conn.execute(
+                """
+                ALTER TABLE contract_delivery_log
+                ADD COLUMN event_date TEXT
+                """
+            )
+
+        conn.commit()
 
 
 if __name__ == "__main__":
