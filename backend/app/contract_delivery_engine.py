@@ -766,8 +766,6 @@ def prepare_delivery_ics(
     conn,
     event,
 ):
-    if not event.get("attach_ics"):
-        return None
 
     profile_key = str(
         event.get("profile_key") or ""
