@@ -122,6 +122,7 @@ def evaluate_delivery_events(
                 JOIN contracts c
                   ON c.id = i.contract_id
                 WHERE c.company_id = ?
+                  AND c.status = 'active'
                   AND i.status = 'planned'
                   AND i.planned_engine_hours IS NOT NULL
                 ORDER BY
@@ -200,6 +201,7 @@ def evaluate_delivery_events(
                 JOIN contracts c
                   ON c.id = i.contract_id
                 WHERE c.company_id = ?
+                  AND c.status = 'active'
                   AND i.status = 'planned'
                   AND i.planned_date IS NOT NULL
                 ORDER BY
@@ -277,6 +279,7 @@ def evaluate_delivery_events(
                 JOIN contracts c
                   ON c.id = b.contract_id
                 WHERE c.company_id = ?
+                  AND c.status = 'active'
                   AND b.status = 'planned'
                   AND b.due_date IS NOT NULL
                 ORDER BY
@@ -349,6 +352,7 @@ def evaluate_delivery_events(
                     planned_end_date
                 FROM contracts
                 WHERE company_id = ?
+                  AND status = 'active'
                   AND planned_end_date IS NOT NULL
                 ORDER BY planned_end_date, id
                 """,

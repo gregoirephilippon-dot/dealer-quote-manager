@@ -2871,6 +2871,7 @@ def contract_module_navigation():
         <span class="button secondary">Interventions</span>
         <a class="button secondary" href="/contracts/parts-forecast">Prevision pieces</a>
         <a class="button secondary" href="/contracts/planning">Planning &amp; Agenda</a>
+        <a class="button secondary" href="/contracts/delivery-history">Historique diffusion</a>
         <span class="button secondary">Documents</span>
         <a class="button secondary" href="/contracts/settings/recipients">Parametres</a>
     </div>
@@ -2920,6 +2921,17 @@ def contracts_page(request: Request):
                 <a class="button green" href="/contract/{row['id']}">
                     Ouvrir
                 </a>
+
+                <form
+                    method="post"
+                    action="/contract/{row['id']}/delete"
+                    style="display:inline;"
+                    onsubmit="return confirm('SUPPRESSION DEFINITIVE du contrat {row["contract_number"]} et de toutes ses donnees de suivi ?');"
+                >
+                    <button type="submit">
+                        Supprimer
+                    </button>
+                </form>
             </td>
         </tr>
         """
@@ -3344,6 +3356,276 @@ def contracts_planning_page(
 
 
 
+
+@app.get("/contracts/delivery-history", response_class=HTMLResponse)
+def contract_delivery_history_page(
+    request: Request,
+    profile: str = "",
+    status: str = "",
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    company_id = get_active_company_id_for_request(request)
+    company_name = get_active_company_name_for_request(request)
+
+    from html import escape as html_escape
+
+    profile = (profile or "").strip().lower()
+    status = (status or "").strip().lower()
+
+    allowed_profiles = {
+        "",
+        "atelier",
+        "magasin",
+        "facturation",
+        "commerce",
+    }
+
+    allowed_statuses = {
+        "",
+        "sent",
+        "error",
+        "simulated",
+    }
+
+    if profile not in allowed_profiles:
+        profile = ""
+
+    if status not in allowed_statuses:
+        status = ""
+
+    sql = """
+        SELECT
+            l.id,
+            l.created_at,
+            l.sent_at,
+            l.event_key,
+            l.event_revision,
+            l.subject,
+            l.status,
+            l.error_message,
+            p.profile_key,
+            p.profile_name,
+            r.recipient_name,
+            r.email
+        FROM contract_delivery_log l
+        JOIN contract_delivery_profiles p
+          ON p.id = l.profile_id
+        LEFT JOIN contract_delivery_recipients r
+          ON r.id = l.recipient_id
+        WHERE l.company_id = ?
+    """
+
+    params = [company_id]
+
+    if profile:
+        sql += " AND p.profile_key = ?"
+        params.append(profile)
+
+    if status:
+        sql += " AND l.status = ?"
+        params.append(status)
+
+    sql += " ORDER BY l.id DESC LIMIT 500"
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            sql,
+            params,
+        ).fetchall()
+
+    rows_html = ""
+
+    for row in rows:
+        sent_at = (
+            row["sent_at"]
+            or row["created_at"]
+            or "-"
+        )
+
+        profile_name = html_escape(
+            str(
+                row["profile_name"]
+                or row["profile_key"]
+                or "-"
+            )
+        )
+
+        recipient_name = html_escape(
+            str(row["recipient_name"] or "")
+        )
+
+        recipient_email = html_escape(
+            str(row["email"] or "-")
+        )
+
+        recipient_text = recipient_email
+
+        if recipient_name:
+            recipient_text = (
+                f"{recipient_name}<br>"
+                f"<span class='muted'>{recipient_email}</span>"
+            )
+
+        subject = html_escape(
+            str(row["subject"] or "-")
+        )
+
+        event_key = html_escape(
+            str(row["event_key"] or "-")
+        )
+
+        row_status = html_escape(
+            str(row["status"] or "-")
+        )
+
+        error = html_escape(
+            str(row["error_message"] or "")
+        )
+
+        if not error:
+            error = "-"
+
+        rows_html += f"""
+        <tr>
+            <td>{sent_at}</td>
+            <td>{profile_name}</td>
+            <td>{recipient_text}</td>
+            <td>
+                {event_key}
+                <br>
+                <span class="muted">
+                    Revision {int(row["event_revision"] or 0)}
+                </span>
+            </td>
+            <td>{subject}</td>
+            <td><strong>{row_status}</strong></td>
+            <td>{error}</td>
+        </tr>
+        """
+
+    if not rows_html:
+        rows_html = """
+        <tr>
+            <td colspan="7" class="muted">
+                Aucune diffusion pour ces criteres.
+            </td>
+        </tr>
+        """
+
+    def selected(value, current):
+        return "selected" if value == current else ""
+
+    content = f"""
+    <h2>Historique des diffusions</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <strong>Societe active :</strong>
+        {html_escape(str(company_name))}
+    </div>
+
+    <div class="card">
+        <h3>Filtres</h3>
+
+        <form method="get" action="/contracts/delivery-history">
+            <div class="grid">
+                <label>
+                    Profil
+                    <select name="profile">
+                        <option value="" {selected("", profile)}>
+                            Tous
+                        </option>
+                        <option value="atelier" {selected("atelier", profile)}>
+                            Atelier
+                        </option>
+                        <option value="magasin" {selected("magasin", profile)}>
+                            Magasin
+                        </option>
+                        <option value="facturation" {selected("facturation", profile)}>
+                            Facturation
+                        </option>
+                        <option value="commerce" {selected("commerce", profile)}>
+                            Commerce
+                        </option>
+                    </select>
+                </label>
+
+                <label>
+                    Statut
+                    <select name="status">
+                        <option value="" {selected("", status)}>
+                            Tous
+                        </option>
+                        <option value="sent" {selected("sent", status)}>
+                            Envoye
+                        </option>
+                        <option value="error" {selected("error", status)}>
+                            Erreur
+                        </option>
+                        <option value="simulated" {selected("simulated", status)}>
+                            Simulation
+                        </option>
+                    </select>
+                </label>
+            </div>
+
+            <button class="button green" type="submit">
+                Filtrer
+            </button>
+
+            <a
+                class="button secondary"
+                href="/contracts/delivery-history"
+            >
+                Reinitialiser
+            </a>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Dernieres diffusions</h3>
+
+        <div style="overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Profil</th>
+                        <th>Destinataire</th>
+                        <th>Evenement</th>
+                        <th>Sujet</th>
+                        <th>Statut</th>
+                        <th>Erreur</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+
+        <p class="muted">
+            Affichage limite aux 500 dernieres diffusions.
+        </p>
+    </div>
+    """
+
+    return layout(
+        "Historique diffusions contrats",
+        content,
+    )
+
+
 @app.get("/contracts/settings/recipients", response_class=HTMLResponse)
 def contract_recipients_page(request: Request):
     login_response = require_login(request)
@@ -3585,6 +3867,17 @@ def contract_recipients_page(request: Request):
             <h3>{profile_name}</h3>
             <p class="muted">{description}</p>
 
+            <form
+                action="/contracts/settings/profiles/{profile_id}/test"
+                method="post"
+                style="margin:12px 0 18px 0;"
+                onsubmit="return confirm('Envoyer un email TEST aux destinataires actifs de ce profil ?');"
+            >
+                <button class="button secondary" type="submit">
+                    Envoyer un test
+                </button>
+            </form>
+
             <div style="overflow-x:auto;">
                 <table>
                     <thead>
@@ -3693,6 +3986,287 @@ def contract_recipients_page(request: Request):
     """
 
     return layout("Diffusion contrats", content)
+
+
+
+@app.post("/contracts/settings/profiles/{profile_id}/test")
+def contract_delivery_profile_test(
+    profile_id: int,
+    request: Request,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    role = str(
+        context.get("role") or ""
+    ).upper()
+
+    if role not in (
+        "OWNER",
+        "SUPER_ADMIN",
+        "COMPANY_ADMIN",
+    ):
+        return admin_required_page()
+
+    company_id = get_active_company_id_for_request(
+        request
+    )
+
+    company_name = get_active_company_name_for_request(
+        request
+    )
+
+    with get_connection() as conn:
+        profile_row = conn.execute(
+            """
+            SELECT
+                id,
+                profile_key,
+                profile_name
+            FROM contract_delivery_profiles
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (
+                profile_id,
+                company_id,
+            ),
+        ).fetchone()
+
+        if not profile_row:
+            return HTMLResponse(
+                layout(
+                    "Profil introuvable",
+                    """
+                    <div class="card">
+                        Profil de diffusion introuvable
+                        ou non autorise.
+                    </div>
+                    """,
+                ),
+                status_code=404,
+            )
+
+        recipients = conn.execute(
+            """
+            SELECT
+                id,
+                recipient_name,
+                email
+            FROM contract_delivery_recipients
+            WHERE profile_id = ?
+              AND is_active = 1
+            ORDER BY id
+            """,
+            (profile_id,),
+        ).fetchall()
+
+    if not recipients:
+        return HTMLResponse(
+            layout(
+                "Aucun destinataire",
+                f"""
+                <div class="card">
+                    <h3>Aucun destinataire actif</h3>
+                    <p>
+                        Ajoute ou active au moins un
+                        destinataire pour ce profil.
+                    </p>
+
+                    <a
+                        class="button secondary"
+                        href="/contracts/settings/recipients"
+                    >
+                        Retour aux parametres
+                    </a>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    from datetime import date, datetime, timedelta
+    from html import escape as html_escape
+
+    from contract_delivery_mail import (
+        build_delivery_email,
+    )
+
+    from contract_delivery_processor import (
+        _send_email_smtp,
+        _smtp_settings,
+        DEFAULT_FROM_ADDRESS,
+    )
+
+    profile_key = str(
+        profile_row["profile_key"] or ""
+    )
+
+    profile_name = str(
+        profile_row["profile_name"]
+        or profile_key
+    )
+
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
+    uid_stamp = datetime.now().strftime(
+        "%Y%m%d%H%M%S%f"
+    )
+
+    ics_content = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "PRODID:-//Dealer Quote Manager//Test//FR\r\n"
+        "CALSCALE:GREGORIAN\r\n"
+        "METHOD:PUBLISH\r\n"
+        "BEGIN:VEVENT\r\n"
+        f"UID:dqm:test:{company_id}:{profile_id}:{uid_stamp}"
+        "@dealer-quote-manager\r\n"
+        "SEQUENCE:0\r\n"
+        f"DTSTART;VALUE=DATE:{today.strftime('%Y%m%d')}\r\n"
+        f"DTEND;VALUE=DATE:{tomorrow.strftime('%Y%m%d')}\r\n"
+        f"SUMMARY:TEST diffusion {profile_name}\r\n"
+        f"DESCRIPTION:Test de diffusion Dealer Quote Manager - "
+        f"{profile_name}\r\n"
+        "STATUS:CONFIRMED\r\n"
+        "TRANSP:TRANSPARENT\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    settings = _smtp_settings()
+
+    from_address = (
+        settings["user"]
+        or DEFAULT_FROM_ADDRESS
+    )
+
+    subject = (
+        f"[TEST] Diffusion {profile_name} - "
+        f"{company_name}"
+    )
+
+    body_text = (
+        "TEST DE DIFFUSION\n\n"
+        f"Societe : {company_name}\n"
+        f"Profil : {profile_name}\n\n"
+        "Ce message confirme le bon fonctionnement "
+        "de la diffusion email de Dealer Quote Manager.\n\n"
+        "Aucune echeance contractuelle reelle "
+        "n'est associee a ce test."
+    )
+
+    sent = []
+    errors = []
+
+    for recipient in recipients:
+        email = str(
+            recipient["email"] or ""
+        ).strip()
+
+        if not email:
+            continue
+
+        message = build_delivery_email(
+            from_address=from_address,
+            to_address=email,
+            subject=subject,
+            body_text=body_text,
+            ics_content=ics_content,
+            event_key=f"test-{profile_key}",
+        )
+
+        try:
+            _send_email_smtp(message)
+            sent.append(email)
+
+        except Exception as exc:
+            errors.append(
+                (
+                    email,
+                    str(exc),
+                )
+            )
+
+    sent_html = ""
+
+    for email in sent:
+        sent_html += (
+            "<li>"
+            + html_escape(email)
+            + "</li>"
+        )
+
+    error_html = ""
+
+    for email, error in errors:
+        error_html += (
+            "<li>"
+            + html_escape(email)
+            + " : "
+            + html_escape(error)
+            + "</li>"
+        )
+
+    if not sent_html:
+        sent_html = "<li>Aucun</li>"
+
+    if not error_html:
+        error_html = "<li>Aucune</li>"
+
+    content = f"""
+    <h2>Test diffusion - {html_escape(profile_name)}</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <h3>Resultat du test</h3>
+
+        <p>
+            <strong>Profil :</strong>
+            {html_escape(profile_name)}
+        </p>
+
+        <p>
+            <strong>Envoyes :</strong>
+        </p>
+        <ul>
+            {sent_html}
+        </ul>
+
+        <p>
+            <strong>Erreurs :</strong>
+        </p>
+        <ul>
+            {error_html}
+        </ul>
+
+        <p class="muted">
+            Ce test n'est pas ajoute a l'historique
+            des echeances contractuelles.
+        </p>
+
+        <a
+            class="button secondary"
+            href="/contracts/settings/recipients"
+        >
+            Retour aux parametres
+        </a>
+    </div>
+    """
+
+    return layout(
+        "Test diffusion contrats",
+        content,
+    )
 
 
 @app.post("/contracts/settings/recipients/add")
@@ -5635,6 +6209,212 @@ def contract_intervention_complete(
     )
 
 
+
+@app.post("/contract/{contract_id}/status/{new_status}")
+def contract_status_change(
+    contract_id: int,
+    new_status: str,
+    request: Request,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    contract = get_contract_for_current_company(
+        request,
+        contract_id,
+    )
+
+    if not contract:
+        return HTMLResponse(
+            layout(
+                "Contrat introuvable",
+                "<div class='card'>Contrat introuvable ou non autorise.</div>",
+            ),
+            status_code=404,
+        )
+
+    allowed_statuses = {
+        "active",
+        "suspended",
+        "archived",
+    }
+
+    if new_status not in allowed_statuses:
+        return HTMLResponse(
+            layout(
+                "Statut invalide",
+                "<div class='card'>Statut de contrat invalide.</div>",
+            ),
+            status_code=400,
+        )
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE contracts
+            SET status = ?
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (
+                new_status,
+                contract_id,
+                contract["company_id"],
+            ),
+        )
+        conn.commit()
+
+    return RedirectResponse(
+        url=f"/contract/{contract_id}",
+        status_code=303,
+    )
+
+
+@app.post("/contract/{contract_id}/delete")
+def contract_delete(
+    contract_id: int,
+    request: Request,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    contract = get_contract_for_current_company(
+        request,
+        contract_id,
+    )
+
+    if not contract:
+        return HTMLResponse(
+            layout(
+                "Contrat introuvable",
+                "<div class='card'>Contrat introuvable ou non autorise.</div>",
+            ),
+            status_code=404,
+        )
+
+    company_id = int(contract["company_id"])
+
+    with get_connection() as conn:
+        intervention_rows = conn.execute(
+            """
+            SELECT id
+            FROM contract_interventions
+            WHERE contract_id = ?
+            """,
+            (contract_id,),
+        ).fetchall()
+
+        intervention_ids = [
+            int(row["id"])
+            for row in intervention_rows
+        ]
+
+        billing_rows = conn.execute(
+            """
+            SELECT id
+            FROM contract_billing_events
+            WHERE contract_id = ?
+            """,
+            (contract_id,),
+        ).fetchall()
+
+        billing_ids = [
+            int(row["id"])
+            for row in billing_rows
+        ]
+
+        event_keys = [
+            f"contract_end:{contract_id}"
+        ]
+
+        event_keys.extend(
+            f"intervention:{item_id}"
+            for item_id in intervention_ids
+        )
+
+        event_keys.extend(
+            f"billing:{item_id}"
+            for item_id in billing_ids
+        )
+
+        if event_keys:
+            placeholders = ",".join(
+                "?" for _ in event_keys
+            )
+
+            conn.execute(
+                f"""
+                DELETE FROM contract_delivery_log
+                WHERE company_id = ?
+                  AND event_key IN ({placeholders})
+                """,
+                [company_id, *event_keys],
+            )
+
+        if intervention_ids:
+            placeholders = ",".join(
+                "?" for _ in intervention_ids
+            )
+
+            conn.execute(
+                f"""
+                DELETE FROM contract_intervention_parts
+                WHERE contract_intervention_id
+                IN ({placeholders})
+                """,
+                intervention_ids,
+            )
+
+        conn.execute(
+            """
+            DELETE FROM contract_meter_readings
+            WHERE contract_id = ?
+            """,
+            (contract_id,),
+        )
+
+        conn.execute(
+            """
+            DELETE FROM contract_billing_events
+            WHERE contract_id = ?
+            """,
+            (contract_id,),
+        )
+
+        conn.execute(
+            """
+            DELETE FROM contract_interventions
+            WHERE contract_id = ?
+            """,
+            (contract_id,),
+        )
+
+        conn.execute(
+            """
+            DELETE FROM contracts
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (
+                contract_id,
+                company_id,
+            ),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url="/contracts",
+        status_code=303,
+    )
+
+
 @app.get(
     "/contract/{contract_id}",
     response_class=HTMLResponse
@@ -6010,6 +6790,58 @@ def contract_detail_page(
                 Voir le devis source
             </a>
         </p>
+    </div>
+
+    <div class="card">
+        <h3>Gestion du contrat</h3>
+
+        <p>
+            Un contrat suspendu ou archive ne genere plus
+            aucune diffusion automatique.
+        </p>
+
+        <form
+            method="post"
+            action="/contract/{contract_id}/status/active"
+            style="display:inline;"
+        >
+            <button class="button green" type="submit">
+                Reactiver
+            </button>
+        </form>
+
+        <form
+            method="post"
+            action="/contract/{contract_id}/status/suspended"
+            style="display:inline;"
+            onsubmit="return confirm('Suspendre ce contrat ? Les diffusions automatiques seront arretees.');"
+        >
+            <button class="button secondary" type="submit">
+                Suspendre
+            </button>
+        </form>
+
+        <form
+            method="post"
+            action="/contract/{contract_id}/status/archived"
+            style="display:inline;"
+            onsubmit="return confirm('Archiver ce contrat ?');"
+        >
+            <button class="button secondary" type="submit">
+                Archiver
+            </button>
+        </form>
+
+        <form
+            method="post"
+            action="/contract/{contract_id}/delete"
+            style="display:inline;"
+            onsubmit="return confirm('ATTENTION : suppression definitive du contrat et de toutes ses donnees de suivi. Continuer ?');"
+        >
+            <button type="submit">
+                Supprimer definitivement
+            </button>
+        </form>
     </div>
 
     {next_intervention_html}
