@@ -9135,6 +9135,18 @@ async def hide_admin_menu_links_for_non_admin(request: Request, call_next):
             html = html.replace(link, "")
 
     from fastapi.responses import HTMLResponse
+
+    clean_headers = dict(response.headers)
+    clean_headers.pop("content-length", None)
+    clean_headers.pop("Content-Length", None)
+
+    return HTMLResponse(
+        content=html,
+        status_code=response.status_code,
+        headers=clean_headers,
+    )
+
+
 from zoneinfo import ZoneInfo
 
 PARIS_TIMEZONE = ZoneInfo("Europe/Paris")
@@ -9161,18 +9173,6 @@ def format_paris_datetime(value):
     dt = dt.astimezone(PARIS_TIMEZONE)
 
     return dt.strftime("%d/%m/%Y %H:%M")
-
-
-
-    clean_headers = dict(response.headers)
-    clean_headers.pop("content-length", None)
-    clean_headers.pop("Content-Length", None)
-
-    return HTMLResponse(
-        content=html,
-        status_code=response.status_code,
-        headers=clean_headers,
-    )
 
 @app.get("/server/context")
 def server_context_page(request: Request):
