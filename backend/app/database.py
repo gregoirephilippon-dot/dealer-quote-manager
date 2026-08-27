@@ -290,6 +290,48 @@ def init_db():
             );
 
 
+            CREATE TABLE IF NOT EXISTS contract_terms_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL,
+                terms_type TEXT NOT NULL,
+                version_code TEXT NOT NULL,
+                title TEXT,
+                content_text TEXT,
+                source_filename TEXT,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+                UNIQUE(
+                    company_id,
+                    terms_type,
+                    version_code
+                )
+            );
+
+            CREATE TABLE IF NOT EXISTS contract_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id INTEGER NOT NULL,
+                company_id INTEGER NOT NULL,
+                document_type TEXT NOT NULL,
+                document_name TEXT NOT NULL,
+                file_path TEXT,
+                status TEXT DEFAULT 'generated',
+                cgv_version_id INTEGER,
+                cgdv_version_id INTEGER,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                signed_at TEXT,
+
+                FOREIGN KEY(contract_id)
+                    REFERENCES contracts(id),
+
+                FOREIGN KEY(cgv_version_id)
+                    REFERENCES contract_terms_versions(id),
+
+                FOREIGN KEY(cgdv_version_id)
+                    REFERENCES contract_terms_versions(id)
+            );
+
+
             CREATE TABLE IF NOT EXISTS contract_intervention_parts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 contract_intervention_id INTEGER NOT NULL,
@@ -318,6 +360,30 @@ def init_db():
                 """
                 ALTER TABLE contract_delivery_log
                 ADD COLUMN event_date TEXT
+                """
+            )
+
+
+        contract_columns = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(contracts)"
+            ).fetchall()
+        }
+
+        if "cgv_version_id" not in contract_columns:
+            conn.execute(
+                """
+                ALTER TABLE contracts
+                ADD COLUMN cgv_version_id INTEGER
+                """
+            )
+
+        if "cgdv_version_id" not in contract_columns:
+            conn.execute(
+                """
+                ALTER TABLE contracts
+                ADD COLUMN cgdv_version_id INTEGER
                 """
             )
 

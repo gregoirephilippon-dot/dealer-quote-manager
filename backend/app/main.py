@@ -2902,10 +2902,837 @@ def contract_module_navigation():
         <a class="button secondary" href="/contracts/parts-forecast">Prevision pieces</a>
         <a class="button secondary" href="/contracts/planning">Planning &amp; Agenda</a>
         <a class="button secondary" href="/contracts/delivery-history">Historique diffusion</a>
-        <span class="button secondary">Documents</span>
+        <a class="button secondary" href="/contracts/documents">Documents</a>
         <a class="button secondary" href="/contracts/settings/recipients">Parametres</a>
     </div>
     """
+
+
+@app.get("/contracts/documents", response_class=HTMLResponse)
+def contract_documents_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+    company_name = get_active_company_name_for_request(request)
+
+    with get_connection() as conn:
+        terms = conn.execute(
+            """
+            SELECT *
+            FROM contract_terms_versions
+            WHERE company_id = ?
+            ORDER BY
+                terms_type,
+                created_at DESC,
+                id DESC
+            """,
+            (company_id,),
+        ).fetchall()
+
+        documents = conn.execute(
+            """
+            SELECT
+                d.*,
+                c.contract_number,
+                c.customer_name,
+                c.engine_serial_number,
+                c.status AS contract_status,
+                cgv.version_code AS cgv_version_code,
+                cgdv.version_code AS cgdv_version_code
+            FROM contract_documents d
+            JOIN contracts c
+              ON c.id = d.contract_id
+            LEFT JOIN contract_terms_versions cgv
+              ON cgv.id = d.cgv_version_id
+            LEFT JOIN contract_terms_versions cgdv
+              ON cgdv.id = d.cgdv_version_id
+            WHERE d.company_id = ?
+            ORDER BY d.created_at DESC, d.id DESC
+            """,
+            (company_id,),
+        ).fetchall()
+
+    cgv_rows = ""
+    cgdv_rows = ""
+
+    for term in terms:
+        active_text = (
+            "Active"
+            if int(term["is_active"] or 0) == 1
+            else "Inactive"
+        )
+
+        row_html = f"""
+        <tr>
+            <td>{term["version_code"]}</td>
+            <td>{term["title"] or "-"}</td>
+            <td>{term["source_filename"] or "-"}</td>
+            <td>{active_text}</td>
+            <td>{term["created_at"] or "-"}</td>
+            <td>
+                <a
+                    class="button secondary"
+                    href="/contracts/documents/terms/{term["id"]}"
+                >
+                    Voir
+                </a>
+
+                {
+                    f'<form method="post" action="/contracts/documents/terms/{term["id"]}/deactivate" style="display:inline;"><button class="button secondary" type="submit">Desactiver</button></form>'
+                    if int(term["is_active"] or 0) == 1
+                    else
+                    f'<form method="post" action="/contracts/documents/terms/{term["id"]}/activate" style="display:inline;"><button class="button green" type="submit">Activer</button></form>'
+                }
+            </td>
+        </tr>
+        """
+
+        if term["terms_type"] == "cgv":
+            cgv_rows += row_html
+
+        elif term["terms_type"] == "cgdv":
+            cgdv_rows += row_html
+
+    if not cgv_rows:
+        cgv_rows = """
+        <tr>
+            <td colspan="6">
+                Aucune version CGV importee.
+            </td>
+        </tr>
+        """
+
+    if not cgdv_rows:
+        cgdv_rows = """
+        <tr>
+            <td colspan="6">
+                Aucune version CGDV importee.
+            </td>
+        </tr>
+        """
+
+    document_rows = ""
+
+    for document in documents:
+        document_rows += f"""
+        <tr>
+            <td>
+                <strong>
+                    {document["document_name"]}
+                </strong>
+            </td>
+            <td>
+                {document["contract_number"]}
+            </td>
+            <td>
+                {document["customer_name"] or "-"}
+            </td>
+            <td>
+                {document["document_type"]}
+            </td>
+            <td>
+                {document["status"]}
+            </td>
+            <td>
+                {document["cgv_version_code"] or "-"}
+            </td>
+            <td>
+                {document["cgdv_version_code"] or "-"}
+            </td>
+            <td>
+                {document["created_at"] or "-"}
+            </td>
+        </tr>
+        """
+
+    if not document_rows:
+        document_rows = """
+        <tr>
+            <td colspan="8">
+                Aucun document contractuel genere.
+            </td>
+        </tr>
+        """
+
+    body = f"""
+    {contract_module_navigation()}
+
+    <div class="card">
+        <h2>Documents contrats</h2>
+
+        <p>
+            Societe :
+            <strong>{company_name}</strong>
+        </p>
+
+        <p>
+            Cette zone centralise les documents contractuels,
+            les versions de CGV / CGDV et, prochainement,
+            les contrats PDF prets a signer.
+        </p>
+    </div>
+
+    <div class="card">
+        <h3>Conditions contractuelles</h3>
+
+        <p>
+            Les versions sont conservees afin qu'un document
+            contractuel puisse toujours retrouver exactement
+            les conditions utilisees lors de sa generation.
+        </p>
+
+        <div style="margin:20px 0; padding:16px; border:1px solid #d1d5db; border-radius:8px;">
+            <h4 style="margin-top:0;">Importer une version</h4>
+
+            <form
+                method="post"
+                action="/contracts/documents/terms/import"
+                enctype="multipart/form-data"
+            >
+                <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:end;">
+
+                    <div>
+                        <label><strong>Type</strong></label><br>
+                        <select name="terms_type" required>
+                            <option value="cgv">CGV</option>
+                            <option value="cgdv">CGDV</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label><strong>Version</strong></label><br>
+                        <input
+                            type="text"
+                            name="version_code"
+                            placeholder="Ex : 2026-01"
+                            required
+                        >
+                    </div>
+
+                    <div>
+                        <label><strong>Titre</strong></label><br>
+                        <input
+                            type="text"
+                            name="title"
+                            placeholder="Ex : CGV Services 2026"
+                            required
+                        >
+                    </div>
+
+                    <div>
+                        <label><strong>Fichier</strong></label><br>
+                        <input
+                            type="file"
+                            name="file"
+                            accept=".txt,.docx"
+                            required
+                        >
+                    </div>
+
+                    <div>
+                        <button class="button green" type="submit">
+                            Importer et activer
+                        </button>
+                    </div>
+
+                </div>
+            </form>
+
+            <p style="margin-bottom:0; margin-top:12px;">
+                Formats acceptes : TXT et DOCX.
+                La nouvelle version devient automatiquement
+                la version active de son type.
+            </p>
+        </div>
+
+        <h4>CGV - Conditions Generales de Vente</h4>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Version</th>
+                    <th>Titre</th>
+                    <th>Source</th>
+                    <th>Statut</th>
+                    <th>Creee le</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {cgv_rows}
+            </tbody>
+        </table>
+
+        <h4 style="margin-top:24px;">
+            CGDV - Conditions Generales de Vente / Service
+        </h4>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Version</th>
+                    <th>Titre</th>
+                    <th>Source</th>
+                    <th>Statut</th>
+                    <th>Creee le</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {cgdv_rows}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Documents contractuels</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Document</th>
+                    <th>Contrat</th>
+                    <th>Client</th>
+                    <th>Type</th>
+                    <th>Statut</th>
+                    <th>CGV</th>
+                    <th>CGDV</th>
+                    <th>Cree le</th>
+                </tr>
+            </thead>
+            <tbody>
+                {document_rows}
+            </tbody>
+        </table>
+    </div>
+    """
+
+    return HTMLResponse(
+        layout(
+            "Documents contrats",
+            body,
+        )
+    )
+
+
+
+def extract_contract_terms_text(upload_file: UploadFile):
+    import io
+    import zipfile
+    import xml.etree.ElementTree as ET
+
+    original_name = upload_file.filename or ""
+    suffix = Path(original_name).suffix.lower()
+
+    if suffix == ".txt":
+        raw = upload_file.file.read()
+
+        for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+            try:
+                return raw.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+
+        raise ValueError("Impossible de lire le fichier TXT.")
+
+    if suffix == ".docx":
+        raw = upload_file.file.read()
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                xml_data = archive.read("word/document.xml")
+        except Exception as exc:
+            raise ValueError(
+                "Le fichier DOCX est invalide ou illisible."
+            ) from exc
+
+        root = ET.fromstring(xml_data)
+
+        namespace = {
+            "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        }
+
+        paragraphs = []
+
+        for paragraph in root.findall(".//w:p", namespace):
+            fragments = []
+
+            for node in paragraph.findall(".//w:t", namespace):
+                if node.text:
+                    fragments.append(node.text)
+
+            paragraph_text = "".join(fragments).strip()
+
+            if paragraph_text:
+                paragraphs.append(paragraph_text)
+
+        content = "\n\n".join(paragraphs).strip()
+
+        if not content:
+            raise ValueError(
+                "Aucun texte exploitable trouve dans le fichier DOCX."
+            )
+
+        return content
+
+    raise ValueError(
+        "Format refuse. Utilise un fichier TXT ou DOCX."
+    )
+
+
+@app.post(
+    "/contracts/documents/terms/import",
+    response_class=HTMLResponse,
+)
+def contract_terms_import(
+    request: Request,
+    terms_type: str = Form(...),
+    version_code: str = Form(...),
+    title: str = Form(...),
+    file: UploadFile = File(...),
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+
+    terms_type = (terms_type or "").strip().lower()
+    version_code = (version_code or "").strip()
+    title = (title or "").strip()
+
+    if terms_type not in ("cgv", "cgdv"):
+        return HTMLResponse(
+            layout(
+                "Documents contrats",
+                """
+                <div class="card">
+                    <h2>Import refuse</h2>
+                    <p>Le type doit etre CGV ou CGDV.</p>
+                    <p>
+                        <a class="button secondary"
+                           href="/contracts/documents">
+                            Retour
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    if not version_code:
+        return HTMLResponse(
+            layout(
+                "Documents contrats",
+                """
+                <div class="card">
+                    <h2>Import refuse</h2>
+                    <p>La version est obligatoire.</p>
+                    <p>
+                        <a class="button secondary"
+                           href="/contracts/documents">
+                            Retour
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    if not title:
+        return HTMLResponse(
+            layout(
+                "Documents contrats",
+                """
+                <div class="card">
+                    <h2>Import refuse</h2>
+                    <p>Le titre est obligatoire.</p>
+                    <p>
+                        <a class="button secondary"
+                           href="/contracts/documents">
+                            Retour
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    try:
+        content_text = extract_contract_terms_text(file)
+    except ValueError as exc:
+        return HTMLResponse(
+            layout(
+                "Documents contrats",
+                f"""
+                <div class="card">
+                    <h2>Import refuse</h2>
+                    <p>{str(exc)}</p>
+                    <p>
+                        <a class="button secondary"
+                           href="/contracts/documents">
+                            Retour
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    source_filename = Path(
+        file.filename or "document"
+    ).name
+
+    try:
+        with get_connection() as conn:
+            existing = conn.execute(
+                """
+                SELECT id
+                FROM contract_terms_versions
+                WHERE company_id = ?
+                  AND terms_type = ?
+                  AND version_code = ?
+                """,
+                (
+                    company_id,
+                    terms_type,
+                    version_code,
+                ),
+            ).fetchone()
+
+            if existing:
+                return HTMLResponse(
+                    layout(
+                        "Documents contrats",
+                        f"""
+                        <div class="card">
+                            <h2>Version deja existante</h2>
+                            <p>
+                                La version
+                                <strong>{version_code}</strong>
+                                existe deja pour ce type de conditions.
+                            </p>
+                            <p>
+                                Utilise un nouveau numero de version.
+                            </p>
+                            <p>
+                                <a class="button secondary"
+                                   href="/contracts/documents">
+                                    Retour
+                                </a>
+                            </p>
+                        </div>
+                        """,
+                    ),
+                    status_code=400,
+                )
+
+            conn.execute(
+                """
+                UPDATE contract_terms_versions
+                SET is_active = 0
+                WHERE company_id = ?
+                  AND terms_type = ?
+                """,
+                (
+                    company_id,
+                    terms_type,
+                ),
+            )
+
+            conn.execute(
+                """
+                INSERT INTO contract_terms_versions (
+                    company_id,
+                    terms_type,
+                    version_code,
+                    title,
+                    content_text,
+                    source_filename,
+                    is_active
+                )
+                VALUES (?, ?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    company_id,
+                    terms_type,
+                    version_code,
+                    title,
+                    content_text,
+                    source_filename,
+                ),
+            )
+
+            conn.commit()
+
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Documents contrats",
+                f"""
+                <div class="card">
+                    <h2>Erreur import</h2>
+                    <p>{str(exc)}</p>
+                    <p>
+                        <a class="button secondary"
+                           href="/contracts/documents">
+                            Retour
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=500,
+        )
+
+    return RedirectResponse(
+        url="/contracts/documents",
+        status_code=303,
+    )
+
+
+@app.get(
+    "/contracts/documents/terms/{term_id}",
+    response_class=HTMLResponse,
+)
+def contract_terms_view(
+    request: Request,
+    term_id: int,
+):
+    from html import escape
+
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        term = conn.execute(
+            """
+            SELECT *
+            FROM contract_terms_versions
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (
+                term_id,
+                company_id,
+            ),
+        ).fetchone()
+
+    if not term:
+        return HTMLResponse(
+            layout(
+                "Document introuvable",
+                """
+                <div class="card">
+                    <h2>Version introuvable</h2>
+                    <p>
+                        <a class="button secondary"
+                           href="/contracts/documents">
+                            Retour
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=404,
+        )
+
+    type_label = (
+        "CGV"
+        if term["terms_type"] == "cgv"
+        else "CGDV"
+    )
+
+    status_label = (
+        "Active"
+        if int(term["is_active"] or 0) == 1
+        else "Inactive"
+    )
+
+    content_html = escape(
+        term["content_text"] or ""
+    ).replace("\n", "<br>")
+
+    body = f"""
+    {contract_module_navigation()}
+
+    <div class="card">
+        <h2>
+            {type_label} - {escape(term["version_code"] or "")}
+        </h2>
+
+        <p>
+            <strong>Titre :</strong>
+            {escape(term["title"] or "-")}
+        </p>
+
+        <p>
+            <strong>Fichier source :</strong>
+            {escape(term["source_filename"] or "-")}
+        </p>
+
+        <p>
+            <strong>Statut :</strong>
+            {status_label}
+        </p>
+
+        <p>
+            <strong>Creee le :</strong>
+            {escape(term["created_at"] or "-")}
+        </p>
+
+        <p>
+            <a class="button secondary"
+               href="/contracts/documents">
+                Retour aux documents
+            </a>
+        </p>
+    </div>
+
+    <div class="card">
+        <h3>Contenu</h3>
+
+        <div style="
+            white-space:normal;
+            line-height:1.55;
+            padding:12px;
+            border:1px solid #e5e7eb;
+            border-radius:8px;
+        ">
+            {content_html}
+        </div>
+    </div>
+    """
+
+    return HTMLResponse(
+        layout(
+            f"{type_label} {term['version_code']}",
+            body,
+        )
+    )
+
+
+@app.post(
+    "/contracts/documents/terms/{term_id}/activate",
+    response_class=HTMLResponse,
+)
+def contract_terms_activate(
+    request: Request,
+    term_id: int,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        term = conn.execute(
+            """
+            SELECT *
+            FROM contract_terms_versions
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (
+                term_id,
+                company_id,
+            ),
+        ).fetchone()
+
+        if not term:
+            return HTMLResponse(
+                "Version introuvable.",
+                status_code=404,
+            )
+
+        conn.execute(
+            """
+            UPDATE contract_terms_versions
+            SET is_active = 0
+            WHERE company_id = ?
+              AND terms_type = ?
+            """,
+            (
+                company_id,
+                term["terms_type"],
+            ),
+        )
+
+        conn.execute(
+            """
+            UPDATE contract_terms_versions
+            SET is_active = 1
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (
+                term_id,
+                company_id,
+            ),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url="/contracts/documents",
+        status_code=303,
+    )
+
+
+@app.post(
+    "/contracts/documents/terms/{term_id}/deactivate",
+    response_class=HTMLResponse,
+)
+def contract_terms_deactivate(
+    request: Request,
+    term_id: int,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE contract_terms_versions
+            SET is_active = 0
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (
+                term_id,
+                company_id,
+            ),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url="/contracts/documents",
+        status_code=303,
+    )
 
 
 @app.get("/contracts", response_class=HTMLResponse)
@@ -6561,6 +7388,162 @@ def contract_delete(
     )
 
 
+@app.post(
+    "/contract/{contract_id}/generate-pdf",
+    response_class=HTMLResponse,
+)
+def contract_generate_pdf(
+    contract_id: int,
+    request: Request,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    contract = get_contract_for_current_company(
+        request,
+        contract_id,
+    )
+
+    if not contract:
+        return HTMLResponse(
+            "Contrat introuvable ou non autorise.",
+            status_code=404,
+        )
+
+    if not contract["cgv_version_id"] and not contract["cgdv_version_id"]:
+        return HTMLResponse(
+            layout(
+                "PDF contrat",
+                f"""
+                <div class="card">
+                    <h2>Conditions contractuelles manquantes</h2>
+                    <p>
+                        Associe d'abord les versions CGV / CGDV
+                        applicables au contrat.
+                    </p>
+                    <p>
+                        <a class="button secondary"
+                           href="/contract/{contract_id}">
+                            Retour au contrat
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    try:
+        from export_contract_pdf import export_contract_pdf
+        pdf_path = export_contract_pdf(contract_id)
+
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Erreur PDF contrat",
+                f"""
+                <div class="card">
+                    <h2>Generation impossible</h2>
+                    <p>{str(exc)}</p>
+                    <p>
+                        <a class="button secondary"
+                           href="/contract/{contract_id}">
+                            Retour au contrat
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=500,
+        )
+
+    return RedirectResponse(
+        url=f"/exports/{pdf_path.name}",
+        status_code=303,
+    )
+
+
+@app.post(
+    "/contract/{contract_id}/terms/use-active",
+    response_class=HTMLResponse,
+)
+def contract_use_active_terms(
+    contract_id: int,
+    request: Request,
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    contract = get_contract_for_current_company(
+        request,
+        contract_id,
+    )
+
+    if not contract:
+        return HTMLResponse(
+            "Contrat introuvable ou non autorise.",
+            status_code=404,
+        )
+
+    company_id = int(contract["company_id"])
+
+    with get_connection() as conn:
+        active_cgv = conn.execute(
+            """
+            SELECT id
+            FROM contract_terms_versions
+            WHERE company_id = ?
+              AND terms_type = 'cgv'
+              AND is_active = 1
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (company_id,),
+        ).fetchone()
+
+        active_cgdv = conn.execute(
+            """
+            SELECT id
+            FROM contract_terms_versions
+            WHERE company_id = ?
+              AND terms_type = 'cgdv'
+              AND is_active = 1
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (company_id,),
+        ).fetchone()
+
+        conn.execute(
+            """
+            UPDATE contracts
+            SET cgv_version_id = ?,
+                cgdv_version_id = ?
+            WHERE id = ?
+              AND company_id = ?
+            """,
+            (
+                active_cgv["id"] if active_cgv else None,
+                active_cgdv["id"] if active_cgdv else None,
+                contract_id,
+                company_id,
+            ),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url=f"/contract/{contract_id}",
+        status_code=303,
+    )
+
+
 @app.get(
     "/contract/{contract_id}",
     response_class=HTMLResponse
@@ -6642,6 +7625,65 @@ def contract_detail_page(
                 """,
                 (next_intervention["id"],),
             ).fetchall()
+
+    with get_connection() as conn:
+        active_cgv = conn.execute(
+            """
+            SELECT *
+            FROM contract_terms_versions
+            WHERE company_id = ?
+              AND terms_type = 'cgv'
+              AND is_active = 1
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (contract["company_id"],),
+        ).fetchone()
+
+        active_cgdv = conn.execute(
+            """
+            SELECT *
+            FROM contract_terms_versions
+            WHERE company_id = ?
+              AND terms_type = 'cgdv'
+              AND is_active = 1
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (contract["company_id"],),
+        ).fetchone()
+
+        linked_cgv = None
+        linked_cgdv = None
+
+        if contract["cgv_version_id"]:
+            linked_cgv = conn.execute(
+                """
+                SELECT *
+                FROM contract_terms_versions
+                WHERE id = ?
+                  AND company_id = ?
+                """,
+                (
+                    contract["cgv_version_id"],
+                    contract["company_id"],
+                ),
+            ).fetchone()
+
+        if contract["cgdv_version_id"]:
+            linked_cgdv = conn.execute(
+                """
+                SELECT *
+                FROM contract_terms_versions
+                WHERE id = ?
+                  AND company_id = ?
+                """,
+                (
+                    contract["cgdv_version_id"],
+                    contract["company_id"],
+                ),
+            ).fetchone()
+
 
     readings_html = ""
 
@@ -6822,6 +7864,54 @@ def contract_detail_page(
         </div>
         """
 
+    with get_connection() as conn:
+        contract_documents = conn.execute(
+            """
+            SELECT *
+            FROM contract_documents
+            WHERE contract_id = ?
+              AND company_id = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (
+                contract_id,
+                contract["company_id"],
+            ),
+        ).fetchall()
+
+    contract_documents_html = ""
+
+    for document in contract_documents:
+        file_link = ""
+
+        if document["file_path"]:
+            file_link = f"""
+            <a class="button secondary"
+               href="/exports/{document['file_path']}"
+               target="_blank">
+                Ouvrir
+            </a>
+            """
+
+        contract_documents_html += f"""
+        <tr>
+            <td>{document["document_name"]}</td>
+            <td>{document["document_type"]}</td>
+            <td>{document["status"]}</td>
+            <td>{document["created_at"]}</td>
+            <td>{file_link}</td>
+        </tr>
+        """
+
+    if not contract_documents_html:
+        contract_documents_html = """
+        <tr>
+            <td colspan="5">
+                Aucun document genere pour ce contrat.
+            </td>
+        </tr>
+        """
+
     content = f"""
     <h2>Contrat {contract["contract_number"]}</h2>
 
@@ -6936,6 +8026,128 @@ def contract_detail_page(
                 Voir le devis source
             </a>
         </p>
+    </div>
+
+    <div class="card">
+        <h3>Conditions contractuelles</h3>
+
+        <p>
+            Les versions associees ci-dessous sont figees pour ce contrat.
+            Une modification future des versions actives ne modifiera pas
+            automatiquement ce contrat.
+        </p>
+
+        <div class="grid">
+            <label>
+                CGV associee
+                <input
+                    value="{
+                        (
+                            linked_cgv['version_code']
+                            + ' - '
+                            + (linked_cgv['title'] or '')
+                        )
+                        if linked_cgv
+                        else 'Aucune'
+                    }"
+                    readonly
+                >
+            </label>
+
+            <label>
+                CGDV associee
+                <input
+                    value="{
+                        (
+                            linked_cgdv['version_code']
+                            + ' - '
+                            + (linked_cgdv['title'] or '')
+                        )
+                        if linked_cgdv
+                        else 'Aucune'
+                    }"
+                    readonly
+                >
+            </label>
+        </div>
+
+        <p>
+            <strong>Versions actuellement actives :</strong><br>
+            CGV :
+            {
+                active_cgv["version_code"]
+                if active_cgv
+                else "Aucune version active"
+            }
+            &nbsp; | &nbsp;
+            CGDV :
+            {
+                active_cgdv["version_code"]
+                if active_cgdv
+                else "Aucune version active"
+            }
+        </p>
+
+        <form
+            method="post"
+            action="/contract/{contract_id}/terms/use-active"
+            onsubmit="return confirm('Associer au contrat les versions CGV et CGDV actuellement actives ?');"
+        >
+            <button class="button green" type="submit">
+                Associer les versions actives
+            </button>
+        </form>
+
+        <form
+            method="post"
+            action="/contract/{contract_id}/generate-pdf"
+            target="_blank"
+            style="display:inline-block; margin-top:10px;"
+        >
+            <button class="button gold" type="submit">
+                Generer PDF contrat
+            </button>
+        </form>
+
+        <p style="margin-top:12px;">
+            <a
+                class="button secondary"
+                href="/contracts/documents"
+            >
+                Gerer les CGV / CGDV
+            </a>
+
+            {
+                f'<a class="button secondary" href="/contracts/documents/terms/{linked_cgv["id"]}">Voir CGV associee</a>'
+                if linked_cgv
+                else ''
+            }
+
+            {
+                f'<a class="button secondary" href="/contracts/documents/terms/{linked_cgdv["id"]}">Voir CGDV associee</a>'
+                if linked_cgdv
+                else ''
+            }
+        </p>
+    </div>
+
+    <div class="card">
+        <h3>Documents du contrat</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Document</th>
+                    <th>Type</th>
+                    <th>Statut</th>
+                    <th>Creation</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {contract_documents_html}
+            </tbody>
+        </table>
     </div>
 
     <div class="card">
@@ -7247,9 +8459,18 @@ def export_quote(quote_id: int, request: Request):
 def get_export(filename: str, request: Request):
     import re
 
-    match = re.match(r"^quote_(\d+)(?:_dealer)?\.(pdf|html)$", filename or "")
-    if match:
-        quote_id = int(match.group(1))
+    quote_match = re.match(
+        r"^quote_(\d+)(?:_dealer)?\.(pdf|html)$",
+        filename or "",
+    )
+
+    contract_match = re.match(
+        r"^contract_(\d+)_\d{8}_\d{6}\.pdf$",
+        filename or "",
+    )
+
+    if quote_match:
+        quote_id = int(quote_match.group(1))
         is_dealer_export = "_dealer." in filename
 
         if is_dealer_export:
@@ -7258,19 +8479,79 @@ def get_export(filename: str, request: Request):
                 return dealer_response
 
         with get_connection() as conn:
-            quote = get_quote_for_active_company_request(conn, quote_id, request)
+            quote = get_quote_for_active_company_request(
+                conn,
+                quote_id,
+                request,
+            )
+
             if quote is None:
                 return quote_access_denied_response(quote_id)
+
+    elif contract_match:
+        contract_id = int(contract_match.group(1))
+
+        contract = get_contract_for_current_company(
+            request,
+            contract_id,
+        )
+
+        if not contract:
+            return HTMLResponse(
+                layout(
+                    "Acces refuse",
+                    "<div class='error'>Contrat non autorise.</div>",
+                ),
+                status_code=403,
+            )
+
+        with get_connection() as conn:
+            document = conn.execute(
+                """
+                SELECT id
+                FROM contract_documents
+                WHERE contract_id = ?
+                  AND company_id = ?
+                  AND file_path = ?
+                """,
+                (
+                    contract_id,
+                    contract["company_id"],
+                    filename,
+                ),
+            ).fetchone()
+
+        if not document:
+            return HTMLResponse(
+                layout(
+                    "Acces refuse",
+                    "<div class='error'>Document contractuel non autorise.</div>",
+                ),
+                status_code=403,
+            )
+
     else:
         return HTMLResponse(
-            layout("Accès refusé", "<div class='error'>Fichier export non autorisé.</div>"),
+            layout(
+                "Acces refuse",
+                "<div class='error'>Fichier export non autorise.</div>",
+            ),
             status_code=403,
         )
 
     path = EXPORT_DIR / filename
+
     if not path.exists():
-        return HTMLResponse(layout("Introuvable", f"<div class='error'>Fichier introuvable : {filename}</div>"), status_code=404)
+        return HTMLResponse(
+            layout(
+                "Introuvable",
+                f"<div class='error'>Fichier introuvable : {filename}</div>",
+            ),
+            status_code=404,
+        )
+
     return FileResponse(path)
+
 
 # --- Permanent package routes - added by install_packages_permanent.py ---
 from fastapi.responses import HTMLResponse as _PkgHTMLResponse, RedirectResponse as _PkgRedirectResponse
