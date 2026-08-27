@@ -6348,7 +6348,7 @@ def contract_status_change(
     allowed_statuses = {
         "active",
         "suspended",
-        "archived",
+        "inactive",
     }
 
     if new_status not in allowed_statuses:
@@ -6361,19 +6361,56 @@ def contract_status_change(
         )
 
     with get_connection() as conn:
-        conn.execute(
-            """
-            UPDATE contracts
-            SET status = ?
-            WHERE id = ?
-              AND company_id = ?
-            """,
-            (
-                new_status,
-                contract_id,
-                contract["company_id"],
-            ),
-        )
+        if new_status == "active":
+            conn.execute(
+                """
+                UPDATE contracts
+                SET
+                    status = 'active',
+                    activated_at = COALESCE(
+                        activated_at,
+                        CURRENT_TIMESTAMP
+                    ),
+                    ended_at = NULL
+                WHERE id = ?
+                  AND company_id = ?
+                """,
+                (
+                    contract_id,
+                    contract["company_id"],
+                ),
+            )
+
+        elif new_status == "suspended":
+            conn.execute(
+                """
+                UPDATE contracts
+                SET status = 'suspended'
+                WHERE id = ?
+                  AND company_id = ?
+                """,
+                (
+                    contract_id,
+                    contract["company_id"],
+                ),
+            )
+
+        elif new_status == "inactive":
+            conn.execute(
+                """
+                UPDATE contracts
+                SET
+                    status = 'inactive',
+                    ended_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                  AND company_id = ?
+                """,
+                (
+                    contract_id,
+                    contract["company_id"],
+                ),
+            )
+
         conn.commit()
 
     return RedirectResponse(
@@ -6905,41 +6942,92 @@ def contract_detail_page(
         <h3>Gestion du contrat</h3>
 
         <p>
-            Un contrat suspendu ou archive ne genere plus
-            aucune diffusion automatique.
+            <strong>Statut actuel :</strong>
+            {
+                "Brouillon"
+                if contract["status"] == "draft"
+                else "Actif"
+                if contract["status"] == "active"
+                else "Suspendu"
+                if contract["status"] == "suspended"
+                else "Inactif"
+                if contract["status"] == "inactive"
+                else contract["status"]
+            }
         </p>
 
-        <form
-            method="post"
-            action="/contract/{contract_id}/status/active"
-            style="display:inline;"
-        >
-            <button class="button green" type="submit">
-                Reactiver
-            </button>
-        </form>
+        <p>
+            Seul un contrat actif genere les interventions,
+            facturations et diffusions automatiques.
+        </p>
 
-        <form
-            method="post"
-            action="/contract/{contract_id}/status/suspended"
-            style="display:inline;"
-            onsubmit="return confirm('Suspendre ce contrat ? Les diffusions automatiques seront arretees.');"
-        >
-            <button class="button secondary" type="submit">
-                Suspendre
-            </button>
-        </form>
+        {
+            f"""
+            <form
+                method="post"
+                action="/contract/{contract_id}/status/active"
+                style="display:inline;"
+                onsubmit="return confirm('Activer ce contrat ?');"
+            >
+                <button class="button green" type="submit">
+                    Activer
+                </button>
+            </form>
+            """
+            if contract["status"] == "draft"
+            else ""
+        }
 
-        <form
-            method="post"
-            action="/contract/{contract_id}/status/archived"
-            style="display:inline;"
-            onsubmit="return confirm('Archiver ce contrat ?');"
-        >
-            <button class="button secondary" type="submit">
-                Archiver
-            </button>
-        </form>
+        {
+            f"""
+            <form
+                method="post"
+                action="/contract/{contract_id}/status/suspended"
+                style="display:inline;"
+                onsubmit="return confirm('Suspendre ce contrat ? Les diffusions automatiques seront arretees.');"
+            >
+                <button class="button secondary" type="submit">
+                    Suspendre
+                </button>
+            </form>
+            """
+            if contract["status"] == "active"
+            else ""
+        }
+
+        {
+            f"""
+            <form
+                method="post"
+                action="/contract/{contract_id}/status/active"
+                style="display:inline;"
+                onsubmit="return confirm('Reactiver ce contrat ?');"
+            >
+                <button class="button green" type="submit">
+                    Reactiver
+                </button>
+            </form>
+            """
+            if contract["status"] in ("suspended", "inactive")
+            else ""
+        }
+
+        {
+            f"""
+            <form
+                method="post"
+                action="/contract/{contract_id}/status/inactive"
+                style="display:inline;"
+                onsubmit="return confirm('Rendre ce contrat inactif ? Les automatismes seront arretes.');"
+            >
+                <button class="button secondary" type="submit">
+                    Rendre inactif
+                </button>
+            </form>
+            """
+            if contract["status"] in ("active", "suspended")
+            else ""
+        }
 
         <form
             method="post"
