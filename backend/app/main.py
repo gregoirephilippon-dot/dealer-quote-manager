@@ -401,8 +401,25 @@ def layout(title, content):
         body {{ font-family: Arial, Helvetica, sans-serif; margin: 0; background: #f7f7f4; color: #1f2933; }}
         header {{ background: #102033; color: white; padding: 18px 28px; border-bottom: 4px solid #d8c38a; }}
         header h1 {{ margin: 0; font-size: 24px; }}
-        nav {{ margin-top: 10px; }}
-        nav a {{ color: white; margin-right: 18px; text-decoration: none; font-weight: bold; }}
+        nav {{ margin-top: 14px; }}
+        .nav-row {{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:8px; }}
+        .nav-row:first-child {{ margin-top:0; }}
+        .nav-label {{
+            color:#d8c38a;
+            font-size:12px;
+            font-weight:bold;
+            text-transform:uppercase;
+            letter-spacing:.04em;
+            margin-right:2px;
+        }}
+        nav a {{
+            color:white;
+            text-decoration:none;
+            font-weight:bold;
+            padding:7px 10px;
+            border-radius:7px;
+        }}
+        nav a:hover {{ background:rgba(255,255,255,0.12); }}
         main {{ max-width: 1240px; margin: 28px auto; background: white; border-radius: 14px; padding: 28px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }}
         h2 {{ margin-top: 0; color: #102033; }}
         h3 {{ color: #102033; margin-top: 24px; }}
@@ -436,21 +453,78 @@ def layout(title, content):
 <header>
     <h1>Dealer Quote Manager</h1>
     <nav>
-        <a href="/">Offres contrats</a>
-        <a href="/settings">Paramètres calcul</a>
-        <a href="/dealer-discounts">Codes remises</a>
-        <a href="/price-catalog">Catalogue pièces</a>
-        <a href="/server/company-switch">Changer société</a>
-        <a href="/server/companies">Sociétés</a>
-        <a href="/server/company-branding">Identité société</a>
-        <a href="/login">Connexion</a>
-        <a href="/logout">Déconnexion</a>
-        <a href="/server/users">Utilisateurs</a>
+        <div class="nav-row">
+            <span class="nav-label">Metier</span>
+            <a href="/">Offres</a>
+            <a href="/import">Importer</a>
+            <a href="/contracts/dashboard">Contrats</a>
+            <a href="/price-catalog">Catalogue pieces</a>
+        </div>
+
+        <div class="nav-row">
+            <span class="nav-label">Gestion</span>
+            <a href="/settings">Parametres calcul</a>
+            <a href="/dealer-discounts">Codes remises</a>
+            <a href="/server/company-branding">Identite societe</a>
+            <a href="/server/company-switch">Changer societe</a>
+        </div>
+
+        <div class="nav-row">
+            <span class="nav-label">Administration</span>
+            <a href="/server/companies">Societes</a>
+            <a href="/server/users">Utilisateurs</a>
+
+            <span class="nav-label" style="margin-left:14px;">Compte</span>
+            <a href="/login">Connexion</a>
+            <a href="/logout">Deconnexion</a>
+        </div>
     </nav>
 </header>
 <main>{content}</main>
 </body>
 </html>"""
+
+def legacy_page_in_layout(title, html):
+    import re
+
+    styles = re.findall(
+        r"<style[^>]*>(.*?)</style>",
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    body_match = re.search(
+        r"<body[^>]*>(.*?)</body>",
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if body_match:
+        body = body_match.group(1)
+    else:
+        body = html
+
+    style_html = ""
+
+    if styles:
+        cleaned_styles = []
+
+        for style in styles:
+            style = re.sub(
+                r"body\s*\{.*?\}",
+                "",
+                style,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            cleaned_styles.append(style)
+
+        style_html = "<style>" + "\n".join(cleaned_styles) + "</style>"
+
+    return layout(
+        title,
+        style_html + body,
+    )
+
 
 def ensure_quote_services(quote_id):
     init_db()
@@ -9491,7 +9565,7 @@ def dealer_discounts_page(request: Request):
             </tr>
         """)
 
-    return f"""
+    return legacy_page_in_layout("Codes remises dealer", f"""
     <!doctype html>
     <html lang="fr">
     <head>
@@ -9603,9 +9677,6 @@ def dealer_discounts_page(request: Request):
     <body>
         <div class="top">
             <h1>Codes remises dealer</h1>
-            <div>
-                <a href="/">Offres contrats</a>
-            </div>
         </div>
 
         <div class="panel help">
@@ -9646,7 +9717,7 @@ def dealer_discounts_page(request: Request):
         </form>
     </body>
     </html>
-    """
+    """)
 
 @app.post("/dealer-discounts")
 async def dealer_discounts_save(request: _DealerDiscountRequest):
@@ -9751,7 +9822,7 @@ def price_catalog_page(request: Request, q: str = ""):
     if q and not result_rows:
         result_rows = '<tr><td colspan="4" class="empty">Aucun résultat.</td></tr>'
 
-    return f"""
+    return legacy_page_in_layout("Catalogue pieces", f"""
     <!doctype html>
     <html lang="fr">
     <head>
@@ -9772,7 +9843,6 @@ def price_catalog_page(request: Request, q: str = ""):
     </head>
     <body>
         <h1>Catalogue prix pièces</h1>
-        <p><a href="/">Offres contrats</a></p>
 
         <div class="panel">
             <b>Catalogue pièces actuel :</b> {status['count']} références<br>
@@ -9825,7 +9895,7 @@ def price_catalog_page(request: Request, q: str = ""):
         </table>
     </body>
     </html>
-    """
+    """)
 
 @app.post("/price-catalog/upload")
 async def price_catalog_upload(
