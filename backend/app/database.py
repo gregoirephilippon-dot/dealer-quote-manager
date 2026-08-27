@@ -315,6 +315,7 @@ def init_db():
                 document_type TEXT NOT NULL,
                 document_name TEXT NOT NULL,
                 file_path TEXT,
+                signed_file_path TEXT,
                 status TEXT DEFAULT 'generated',
                 cgv_version_id INTEGER,
                 cgdv_version_id INTEGER,
@@ -360,6 +361,22 @@ def init_db():
                 """
                 ALTER TABLE contract_delivery_log
                 ADD COLUMN event_date TEXT
+                """
+            )
+
+
+        contract_document_columns = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(contract_documents)"
+            ).fetchall()
+        }
+
+        if "signed_file_path" not in contract_document_columns:
+            conn.execute(
+                """
+                ALTER TABLE contract_documents
+                ADD COLUMN signed_file_path TEXT
                 """
             )
 

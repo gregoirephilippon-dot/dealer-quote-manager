@@ -7389,6 +7389,147 @@ def contract_delete(
 
 
 @app.post(
+    "/contract/{contract_id}/document/{document_id}/signed",
+    response_class=HTMLResponse,
+)
+async def contract_upload_signed_document(
+    contract_id: int,
+    document_id: int,
+    request: Request,
+    file: UploadFile = File(...),
+):
+    from datetime import datetime
+
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    contract = get_contract_for_current_company(
+        request,
+        contract_id,
+    )
+
+    if not contract:
+        return HTMLResponse(
+            "Contrat introuvable ou non autorise.",
+            status_code=404,
+        )
+
+    with get_connection() as conn:
+        document = conn.execute(
+            """
+            SELECT *
+            FROM contract_documents
+            WHERE id = ?
+              AND contract_id = ?
+              AND company_id = ?
+            """,
+            (
+                document_id,
+                contract_id,
+                contract["company_id"],
+            ),
+        ).fetchone()
+
+    if not document:
+        return HTMLResponse(
+            "Document introuvable ou non autorise.",
+            status_code=404,
+        )
+
+    original_name = file.filename or ""
+    suffix = Path(original_name).suffix.lower()
+
+    if suffix != ".pdf":
+        return HTMLResponse(
+            layout(
+                "PDF signe",
+                f"""
+                <div class="card">
+                    <h2>Format refuse</h2>
+                    <p>
+                        Le document signe doit etre au format PDF.
+                    </p>
+                    <p>
+                        <a
+                            class="button secondary"
+                            href="/contract/{contract_id}"
+                        >
+                            Retour au contrat
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    signed_filename = (
+        f"contract_signed_{contract_id}_{document_id}_{timestamp}.pdf"
+    )
+
+    signed_path = EXPORT_DIR / signed_filename
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+    with signed_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    if signed_path.stat().st_size == 0:
+        signed_path.unlink(missing_ok=True)
+
+        return HTMLResponse(
+            layout(
+                "PDF signe",
+                f"""
+                <div class="card">
+                    <h2>Fichier vide</h2>
+                    <p>Le PDF importe est vide.</p>
+                    <p>
+                        <a
+                            class="button secondary"
+                            href="/contract/{contract_id}"
+                        >
+                            Retour au contrat
+                        </a>
+                    </p>
+                </div>
+                """,
+            ),
+            status_code=400,
+        )
+
+    with get_connection() as conn:
+        conn.execute(
+            """
+            UPDATE contract_documents
+            SET signed_file_path = ?,
+                status = 'signed',
+                signed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND contract_id = ?
+              AND company_id = ?
+            """,
+            (
+                signed_filename,
+                document_id,
+                contract_id,
+                contract["company_id"],
+            ),
+        )
+
+        conn.commit()
+
+    return RedirectResponse(
+        url=f"/contract/{contract_id}",
+        status_code=303,
+    )
+
+
+@app.post(
     "/contract/{contract_id}/generate-pdf",
     response_class=HTMLResponse,
 )
@@ -7882,15 +8023,54 @@ def contract_detail_page(
     contract_documents_html = ""
 
     for document in contract_documents:
-        file_link = ""
+        original_link = ""
+        signed_link = ""
+        signed_upload = ""
 
         if document["file_path"]:
-            file_link = f"""
-            <a class="button secondary"
-               href="/exports/{document['file_path']}"
-               target="_blank">
-                Ouvrir
+            original_link = f"""
+            <a
+                class="button secondary"
+                href="/exports/{document['file_path']}"
+                target="_blank"
+            >
+                Ouvrir original
             </a>
+            """
+
+        if document["signed_file_path"]:
+            signed_link = f"""
+            <a
+                class="button green"
+                href="/exports/{document['signed_file_path']}"
+                target="_blank"
+            >
+                Ouvrir signe
+            </a>
+            """
+
+        elif document["document_type"] == "contract_pdf":
+            signed_upload = f"""
+            <form
+                method="post"
+                action="/contract/{contract_id}/document/{document['id']}/signed"
+                enctype="multipart/form-data"
+                style="display:inline-block; margin-top:6px;"
+            >
+                <input
+                    type="file"
+                    name="file"
+                    accept=".pdf,application/pdf"
+                    required
+                >
+
+                <button
+                    class="button green"
+                    type="submit"
+                >
+                    Importer PDF signe
+                </button>
+            </form>
             """
 
         contract_documents_html += f"""
@@ -7899,7 +8079,11 @@ def contract_detail_page(
             <td>{document["document_type"]}</td>
             <td>{document["status"]}</td>
             <td>{document["created_at"]}</td>
-            <td>{file_link}</td>
+            <td>
+                {original_link}
+                {signed_link}
+                {signed_upload}
+            </td>
         </tr>
         """
 
@@ -7911,6 +8095,7 @@ def contract_detail_page(
             </td>
         </tr>
         """
+
 
     content = f"""
     <h2>Contrat {contract["contract_number"]}</h2>
@@ -8469,6 +8654,11 @@ def get_export(filename: str, request: Request):
         filename or "",
     )
 
+    signed_contract_match = re.match(
+        r"^contract_signed_(\d+)_\d+_\d{8}_\d{6}\.pdf$",
+        filename or "",
+    )
+
     if quote_match:
         quote_id = int(quote_match.group(1))
         is_dealer_export = "_dealer." in filename
@@ -8488,8 +8678,9 @@ def get_export(filename: str, request: Request):
             if quote is None:
                 return quote_access_denied_response(quote_id)
 
-    elif contract_match:
-        contract_id = int(contract_match.group(1))
+    elif contract_match or signed_contract_match:
+        match_used = contract_match or signed_contract_match
+        contract_id = int(match_used.group(1))
 
         contract = get_contract_for_current_company(
             request,
@@ -8512,11 +8703,15 @@ def get_export(filename: str, request: Request):
                 FROM contract_documents
                 WHERE contract_id = ?
                   AND company_id = ?
-                  AND file_path = ?
+                  AND (
+                      file_path = ?
+                      OR signed_file_path = ?
+                  )
                 """,
                 (
                     contract_id,
                     contract["company_id"],
+                    filename,
                     filename,
                 ),
             ).fetchone()
