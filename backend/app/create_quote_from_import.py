@@ -44,11 +44,35 @@ def create_quote_from_json(json_path: str, company_id: int | None = None):
     )
     labour_rate = basis.get("labour_rate")
 
+    source_labour_rate = basis.get("labour_rate")
+    source_total_labour_hours = result.get("total_labour_hours")
+    source_total_labour_cost = result.get("total_labour_cost")
+
     total_parts = result.get("total_material_cost")
-    total_labour = result.get("total_labour_cost")
+
+    # La source Volvo fournit les heures et le montant MO de reference.
+    # DQM devient maitre du calcul : un devis = un taux MO actif unique.
+    labour_hours = float(source_total_labour_hours or 0)
+    active_labour_rate = float(labour_rate or 0)
+    source_labour_cost = float(source_total_labour_cost or 0)
+    source_total_cost = float(result.get("total") or 0)
+
+    total_labour = round(labour_hours * active_labour_rate, 2)
+
+    # Conserver toutes les autres composantes du total Volvo,
+    # mais remplacer sa MO par la MO recalculee par DQM.
+    total_cost = round(
+        source_total_cost - source_labour_cost + total_labour,
+        2,
+    )
+
     total_misc = result.get("misc_cost")
-    total_cost = result.get("total")
-    cost_per_hour = result.get("cost_per_hour")
+
+    cost_per_hour = (
+        round(total_cost / float(total_hours), 5)
+        if float(total_hours or 0) > 0
+        else None
+    )
 
     init_db()
     default_company_id = company_id if company_id is not None else identity.get_active_company_id()
@@ -99,6 +123,9 @@ def create_quote_from_json(json_path: str, company_id: int | None = None):
                 total_hours,
                 hours_per_year,
                 labour_rate,
+                source_labour_rate,
+                source_total_labour_hours,
+                source_total_labour_cost,
                 total_parts,
                 total_labour,
                 total_misc,
@@ -108,7 +135,7 @@ def create_quote_from_json(json_path: str, company_id: int | None = None):
                 selling_per_hour,
                 company_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 import_id,
@@ -121,6 +148,9 @@ def create_quote_from_json(json_path: str, company_id: int | None = None):
                 total_hours,
                 hours_per_year,
                 labour_rate,
+                source_labour_rate,
+                source_total_labour_hours,
+                source_total_labour_cost,
                 total_parts,
                 total_labour,
                 total_misc,

@@ -473,6 +473,9 @@ def apply_pricing(quote_id: int):
                 total_hours,
                 hours_per_year,
                 labour_rate,
+                source_labour_rate,
+                source_total_labour_hours,
+                source_total_labour_cost,
                 oil_catalog_part_no,
                 oil_price_per_liter,
                 oil_service_count,
@@ -957,6 +960,15 @@ def apply_pricing(quote_id: int):
             },
             "labour": {
                 "imported_total": total_labour,
+                "source_rate": quote_value(quote, "source_labour_rate", None),
+                "source_hours": quote_value(quote, "source_total_labour_hours", None),
+                "source_total": quote_value(quote, "source_total_labour_cost", None),
+                "active_rate": labour_rate_input,
+                "active_total": total_labour,
+                "delta": (
+                    total_labour
+                    - float(quote_value(quote, "source_total_labour_cost", 0) or 0)
+                ),
                 "margin_percent": labour_margin,
                 "customer_total_before_indexation": selling_labour,
                 "indexed_customer_total": indexed_labour,

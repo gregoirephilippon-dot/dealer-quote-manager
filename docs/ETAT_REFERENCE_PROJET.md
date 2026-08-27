@@ -443,3 +443,45 @@ Avant toute nouvelle modification :
 ---
 
 FIN ETAT DE REFERENCE V1
+## Taux horaire main-d'oeuvre - regle DQM
+
+Regle validee :
+
+- Un devis utilise un seul taux horaire main-d'oeuvre actif.
+- Le taux actif est stocke dans `quotes.labour_rate`.
+- Les heures main-d'oeuvre Volvo importees sont conservees comme valeur source.
+- Le montant main-d'oeuvre Volvo importe est conserve comme valeur source.
+- DQM recalcule le cout main-d'oeuvre du devis avec :
+  `heures source x taux horaire actif DQM`.
+
+Tracabilite conservee dans `quotes` :
+
+- `source_labour_rate`
+- `source_total_labour_hours`
+- `source_total_labour_cost`
+
+La source Volvo n'est donc jamais ecrasee par le recalcul DQM.
+
+La trace de calcul affiche :
+
+- taux source Volvo ;
+- heures source Volvo ;
+- montant MO source Volvo ;
+- taux actif DQM ;
+- montant MO recalcule DQM ;
+- ecart entre source Volvo et DQM.
+
+Validation fonctionnelle realisee sur le devis de test 43 :
+
+- Source Volvo : 85 EUR/h
+- Heures source : 101 h
+- MO source : 8 585 EUR
+- Taux DQM : 100 EUR/h
+- MO DQM : 10 100 EUR
+- Ecart : 1 515 EUR
+
+Le champ `Cout total main-d'oeuvre` de la page couts est en lecture seule.
+
+Pour les anciens devis ne possedant pas encore les champs source, DQM utilise en compatibilite la somme des heures `quote_lines.labour_time`.
+
+Les lignes permettant de neutraliser l'huile ou le coolant importes restent visuellement actives lorsque le reste du bloc fluide est verrouille/grise.

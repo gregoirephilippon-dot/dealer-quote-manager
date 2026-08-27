@@ -45,6 +45,9 @@ def init_db():
                 total_hours REAL,
                 hours_per_year REAL,
                 labour_rate REAL,
+                source_labour_rate REAL,
+                source_total_labour_hours REAL,
+                source_total_labour_cost REAL,
 
                 total_parts REAL,
                 total_labour REAL,
@@ -317,6 +320,39 @@ def init_db():
                 ADD COLUMN event_date TEXT
                 """
             )
+
+
+        quote_columns = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(quotes)"
+            ).fetchall()
+        }
+
+        if "source_labour_rate" not in quote_columns:
+            conn.execute(
+                """
+                ALTER TABLE quotes
+                ADD COLUMN source_labour_rate REAL
+                """
+            )
+
+        if "source_total_labour_hours" not in quote_columns:
+            conn.execute(
+                """
+                ALTER TABLE quotes
+                ADD COLUMN source_total_labour_hours REAL
+                """
+            )
+
+        if "source_total_labour_cost" not in quote_columns:
+            conn.execute(
+                """
+                ALTER TABLE quotes
+                ADD COLUMN source_total_labour_cost REAL
+                """
+            )
+
 
         conn.commit()
 

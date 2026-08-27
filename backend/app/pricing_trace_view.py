@@ -134,6 +134,21 @@ def get_pricing_result_html(quote):
             <div><strong>Pieces apres indexation</strong><br>{_money(parts.get('indexed_customer_total'), currency)}</div>
             <div><strong>Marge pieces avant indexation</strong><br>{_money(parts_margin_amount, currency)} ({_percent(parts_margin_percent)})</div>
             <div><strong>Main-d'oeuvre importee</strong><br>{_money(labour.get('imported_total'), currency)}</div>
+            <div>
+                <strong>Traçabilité MO</strong><br>
+                Source Volvo :
+                {_money(labour.get('source_rate'), currency)} / h
+                × {float(labour.get('source_hours') or 0):.2f} h
+                = {_money(labour.get('source_total'), currency)}
+                <br>
+                DQM :
+                {_money(labour.get('active_rate'), currency)} / h
+                × {float(labour.get('source_hours') or 0):.2f} h
+                = {_money(labour.get('active_total'), currency)}
+                <br>
+                Écart :
+                {_money(labour.get('delta'), currency)}
+            </div>
             <div><strong>Main-d'oeuvre apres marge</strong><br>{_money(labour.get('customer_total_before_indexation'), currency)} ({_percent(labour.get('margin_percent'))})</div>
             <div><strong>Main-d'oeuvre apres indexation</strong><br>{_money(labour.get('indexed_customer_total'), currency)}</div>
             <div><strong>Services additionnels ajoutes</strong><br>{_money(services.get('total_added'), currency)}</div>

@@ -2039,14 +2039,19 @@ def quote_inputs_page(quote_id: int, request: Request):
     oil_readonly = "readonly" if oil_locked else ""
     coolant_readonly = "readonly" if coolant_locked else ""
 
+    # Le fond reste grise quand le fluide est verrouille,
+    # mais la ligne permettant de le neutraliser doit rester active et lisible.
     oil_style = (
-        "opacity:0.55; background:#f1f1f1;"
+        "background:#f1f1f1;"
         if oil_locked else ""
     )
     coolant_style = (
-        "opacity:0.55; background:#f1f1f1;"
+        "background:#f1f1f1;"
         if coolant_locked else ""
     )
+
+    oil_dim_style = "opacity:0.55;" if oil_locked else ""
+    coolant_dim_style = "opacity:0.55;" if coolant_locked else ""
 
     oil_status = (
         f"Huile importee detectee : {float(imported_oil_row['quantity'] or 0):g} unite(s)."
@@ -2267,7 +2272,7 @@ def quote_inputs_page(quote_id: int, request: Request):
             <label>Heures moteur par an<input type="number" step="0.01" name="hours_per_year" value="{fmt_number(quote['hours_per_year'])}"></label>
             <label>Taux horaire main-d’œuvre input<input type="number" step="0.01" name="labour_rate" value="{fmt_number(quote['labour_rate'])}"></label>
             <label>Coût total pièces<input type="number" step="0.01" name="total_parts" value="{fmt_number(quote['total_parts'])}"></label>
-            <label>Coût total main-d’œuvre<input type="number" step="0.01" name="total_labour" value="{fmt_number(quote['total_labour'])}"></label>
+            <label>Coût total main-d’œuvre<input type="number" step="0.01" name="total_labour" value="{fmt_number(quote['total_labour'])}" readonly></label>
             <label>Coût divers<input type="number" step="0.01" name="total_misc" value="{fmt_number(quote['total_misc'])}"></label>
 
             <input
@@ -2310,7 +2315,7 @@ def quote_inputs_page(quote_id: int, request: Request):
                     <span><strong>Neutraliser l'huile importee et utiliser le calcul logiciel</strong></span>
                 </label>
 
-                <div class="grid">
+                <div class="grid" style="{oil_dim_style}">
                     <label style="grid-column:1 / -1;">
                         Reference huile Volvo
                         <input type="hidden" name="oil_packaging_liters" value="{oil_packaging_liters:g}">
@@ -2411,7 +2416,7 @@ def quote_inputs_page(quote_id: int, request: Request):
                     <span><strong>Neutraliser le coolant importe et utiliser le calcul logiciel</strong></span>
                 </label>
 
-                <div class="grid">
+                <div class="grid" style="{coolant_dim_style}">
                     <label style="grid-column:1 / -1;">
                         Reference coolant Volvo
                         <input type="hidden" name="coolant_packaging_liters" value="{coolant_packaging_liters:g}">
@@ -2578,6 +2583,31 @@ def save_quote_inputs(
         quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
+
+        # Un devis = un seul taux horaire main-d'oeuvre.
+        # Priorite aux heures source Volvo tracees.
+        labour_hours = float(quote["source_total_labour_hours"] or 0)
+
+        # Compatibilite avec les anciens devis de test :
+        # si la source Volvo n'est pas encore tracee, reprendre
+        # la somme des heures importees dans quote_lines.
+        if labour_hours <= 0:
+            labour_row = conn.execute(
+                """
+                SELECT COALESCE(SUM(labour_time), 0) AS labour_hours
+                FROM quote_lines
+                WHERE quote_id = ?
+                """,
+                (quote_id,),
+            ).fetchone()
+            labour_hours = float(labour_row["labour_hours"] or 0)
+
+    # Le montant MO n'est plus saisi independamment.
+    # Il est impose par les heures du devis x son taux horaire actif.
+    total_labour = round(
+        labour_hours * float(labour_rate or 0),
+        2,
+    )
 
     fluid_total = (
         (oil_price_per_liter or 0) * (oil_service_count or 0) * (oil_quantity_per_service or 0)
