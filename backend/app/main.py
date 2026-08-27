@@ -1443,31 +1443,72 @@ def home(request: Request):
         dealer_pdf_link = f'<a class="button danger" href="/exports/quote_{quote_id}_dealer.pdf" target="_blank">PDF dealer</a>' if can_view_dealer_exports and dealer_pdf_path.exists() else ""
         dealer_html_link = f'<a class="button secondary" href="/exports/quote_{quote_id}_dealer.html" target="_blank">HTML dealer</a>' if can_view_dealer_exports and dealer_html_path.exists() else ""
 
+        status_value = str(row["status"] or "")
+
+        status_label = (
+            "Brouillon"
+            if status_value == "draft"
+            else "Envoye"
+            if status_value == "sent"
+            else "Accepte"
+            if status_value == "accepted"
+            else "Refuse"
+            if status_value == "refused"
+            else "Archive"
+            if status_value == "archived"
+            else status_value or "-"
+        )
+
         rows_html += f"""
         <tr>
-            <td>{quote_id}</td><td>{row['created_at']}</td><td>{row['status']}</td>
-            <td>{row['company_name'] or 'Sans société'}</td>
-            <td>{row['customer_name'] or '-'}</td><td>{row['product_designation'] or '-'}</td>
-            <td>{row['engine_serial_number'] or '-'}</td><td>{fmt_money(row['total_cost'], currency)}</td>
+            <td>{quote_id}</td>
+            <td>{row['created_at']}</td>
+            <td><strong>{status_label}</strong></td>
+            <td>{row['customer_name'] or '-'}</td>
+            <td>{row['product_designation'] or '-'}</td>
+            <td>{row['engine_serial_number'] or '-'}</td>
             <td><strong>{fmt_money(row['selling_total'], currency)}</strong></td>
-            <td>{fmt_money(row['selling_monthly'], currency)}</td>
-            <td>{cost_per_hour_txt}</td>
             <td><strong>{selling_per_hour_txt}</strong></td>
-            <td><strong>{margin_amount_txt}</strong></td>
             <td><strong>{margin_percent_txt}</strong></td>
             <td class="actions">
-                <a class="button green" href="/quote/{quote_id}/inputs">Données contrat / moteur</a>
-                <a class="button" href="/quote/{quote_id}/services">Construction de l’offre</a>
-                <a class="button secondary" href="/quote/{quote_id}/export">Générer exports</a>
-                {f'<a class="button gold" href="/quote/{quote_id}/contract/create">Cr&eacute;er le contrat</a>' if str(row['status'] or '') == 'accepted' else ''}
-                {f'<a class="button danger" href="/quote/{quote_id}/archive/confirm">Archiver</a>' if str(row['status']) in ['draft', 'sent', 'refused'] else ''}
-                {f'<a class="button secondary" href="/quote/{quote_id}/restore">Restaurer</a>' if str(row['status']) == 'archived' else ''}
-                {html_link}{pdf_link}{dealer_html_link}{dealer_pdf_link}
+                <a class="button green"
+                   href="/quote/{quote_id}/inputs">
+                    Donnees
+                </a>
+
+                <a class="button"
+                   href="/quote/{quote_id}/services">
+                    Construire l'offre
+                </a>
+
+                <a class="button secondary"
+                   href="/quote/{quote_id}/export">
+                    Exports
+                </a>
+
+                {
+                    f'<a class="button gold" href="/quote/{quote_id}/contract/create">Creer le contrat</a>'
+                    if status_value == 'accepted'
+                    else ''
+                }
+
+                {
+                    f'<a class="button danger" href="/quote/{quote_id}/archive/confirm">Archiver</a>'
+                    if status_value in ['draft', 'sent', 'refused']
+                    else ''
+                }
+
+                {
+                    f'<a class="button secondary" href="/quote/{quote_id}/restore">Restaurer</a>'
+                    if status_value == 'archived'
+                    else ''
+                }
+
             </td>
         </tr>"""
 
     if not rows_html:
-        rows_html = '<tr><td colspan="15">Aucune offre de contrat pour le moment. Commence par importer un fichier Service Calculator.</td></tr>'
+        rows_html = '<tr><td colspan="10">Aucune offre de contrat pour le moment. Commence par importer un fichier Service Calculator.</td></tr>'
 
     content = f"""
     <h2>Offres de contrat de service</h2>
@@ -1555,16 +1596,11 @@ def home(request: Request):
             <th>ID</th>
             <th>Date</th>
             <th>Statut</th>
-            <th>Société</th>
             <th>Client</th>
             <th>Moteur</th>
             <th>Serial</th>
-            <th>Cout brut</th>
             <th>Prix client</th>
-            <th>Mensuel</th>
-            <th>Cout/h</th>
             <th>Prix client/h</th>
-            <th>Marge EUR</th>
             <th>Marge %</th>
             <th>Actions</th>
         </tr></thead>
@@ -9191,7 +9227,7 @@ async def save_settings(
 
     return RedirectResponse(url="/settings", status_code=303)
 
-@app.get("/quote/{quote_id}/export")
+@app.get("/quote/{quote_id}/export", response_class=HTMLResponse)
 def export_quote(quote_id: int, request: Request):
     login_response = require_login(request)
     if login_response:
@@ -9204,8 +9240,142 @@ def export_quote(quote_id: int, request: Request):
         if quote is None:
             return quote_access_denied_response(quote_id)
 
+    pdf_path = EXPORT_DIR / f"quote_{quote_id}.pdf"
+    html_path = EXPORT_DIR / f"quote_{quote_id}.html"
+    dealer_pdf_path = EXPORT_DIR / f"quote_{quote_id}_dealer.pdf"
+    dealer_html_path = EXPORT_DIR / f"quote_{quote_id}_dealer.html"
+
+    can_view_dealer = can_access_dealer_exports(request)
+
+    client_links = ""
+
+    if pdf_path.exists():
+        client_links += f"""
+        <a class="button gold"
+           href="/exports/quote_{quote_id}.pdf"
+           target="_blank">
+            Ouvrir PDF client
+        </a>
+        """
+
+    if html_path.exists():
+        client_links += f"""
+        <a class="button secondary"
+           href="/exports/quote_{quote_id}.html"
+           target="_blank">
+            Ouvrir HTML client
+        </a>
+        """
+
+    dealer_links = ""
+
+    if can_view_dealer and dealer_pdf_path.exists():
+        dealer_links += f"""
+        <a class="button danger"
+           href="/exports/quote_{quote_id}_dealer.pdf"
+           target="_blank">
+            Ouvrir PDF dealer
+        </a>
+        """
+
+    if can_view_dealer and dealer_html_path.exists():
+        dealer_links += f"""
+        <a class="button secondary"
+           href="/exports/quote_{quote_id}_dealer.html"
+           target="_blank">
+            Ouvrir HTML dealer
+        </a>
+        """
+
+    content = f"""
+    <h2>Exports de l'offre #{quote_id}</h2>
+
+    <div class="card">
+        <p>
+            <strong>Client :</strong>
+            {quote['customer_name'] or '-'}
+        </p>
+        <p>
+            <strong>Moteur :</strong>
+            {quote['product_designation'] or '-'}
+        </p>
+        <p>
+            <strong>Numero de serie :</strong>
+            {quote['engine_serial_number'] or '-'}
+        </p>
+    </div>
+
+    <div class="card">
+        <h3>Generer les documents</h3>
+
+        <p>
+            Cette action recalcule l'offre puis regenere
+            les documents client et dealer.
+        </p>
+
+        <form method="post"
+              action="/quote/{quote_id}/export/generate">
+            <button class="button green" type="submit">
+                Generer / regenerer les exports
+            </button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Documents client</h3>
+
+        {
+            client_links
+            if client_links
+            else "<p>Aucun export client genere pour le moment.</p>"
+        }
+    </div>
+
+    {
+        f"""
+        <div class="card">
+            <h3>Documents dealer</h3>
+            {
+                dealer_links
+                if dealer_links
+                else "<p>Aucun export dealer genere pour le moment.</p>"
+            }
+        </div>
+        """
+        if can_view_dealer
+        else ""
+    }
+
+    <p>
+        <a class="button secondary" href="/">
+            Retour aux offres
+        </a>
+    </p>
+    """
+
+    return layout(f"Exports offre #{quote_id}", content)
+
+
+@app.post("/quote/{quote_id}/export/generate")
+def export_quote_generate(quote_id: int, request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    with get_connection() as conn:
+        quote = get_quote_for_active_company_request(conn, quote_id, request)
+        if quote is None:
+            return quote_access_denied_response(quote_id)
+
     regenerate_quote(quote_id)
-    return RedirectResponse(url="/", status_code=303)
+
+    return RedirectResponse(
+        url=f"/quote/{quote_id}/export",
+        status_code=303,
+    )
+
 
 @app.get("/exports/{filename}")
 def get_export(filename: str, request: Request):
