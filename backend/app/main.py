@@ -2896,9 +2896,9 @@ def get_contract_for_current_company(request: Request, contract_id: int):
 def contract_module_navigation():
     return """
     <div class="card" style="display:flex; flex-wrap:wrap; gap:8px;">
-        <a class="button secondary" href="/contracts">Tableau de bord</a>
-        <a class="button green" href="/contracts">Mes contrats</a>
-        <span class="button secondary">Interventions</span>
+        <a class="button secondary" href="/contracts/dashboard">Tableau de bord</a>
+        <a class="button secondary" href="/contracts">Mes contrats</a>
+        <a class="button secondary" href="/contracts/interventions">Interventions</a>
         <a class="button secondary" href="/contracts/parts-forecast">Prevision pieces</a>
         <a class="button secondary" href="/contracts/planning">Planning &amp; Agenda</a>
         <a class="button secondary" href="/contracts/delivery-history">Historique diffusion</a>
@@ -3735,6 +3735,307 @@ def contract_terms_deactivate(
     )
 
 
+@app.get("/contracts/dashboard", response_class=HTMLResponse)
+def contracts_dashboard_page(request: Request):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    from datetime import date
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+    company_name = get_active_company_name_for_request(request)
+    today = date.today().isoformat()
+
+    with get_connection() as conn:
+        counts = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS draft_count,
+                SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active_count,
+                SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) AS suspended_count,
+                SUM(CASE WHEN status = 'inactive' THEN 1 ELSE 0 END) AS inactive_count
+            FROM contracts
+            WHERE company_id = ?
+            """,
+            (company_id,),
+        ).fetchone()
+
+        next_interventions = conn.execute(
+            """
+            SELECT
+                i.id,
+                i.planned_date,
+                i.planned_engine_hours,
+                i.intervention_type,
+                c.id AS contract_id,
+                c.contract_number,
+                c.customer_name,
+                c.status AS contract_status
+            FROM contract_interventions i
+            JOIN contracts c
+              ON c.id = i.contract_id
+            WHERE c.company_id = ?
+              AND i.status = 'planned'
+              AND i.planned_date IS NOT NULL
+              AND i.planned_date >= ?
+            ORDER BY i.planned_date, i.planned_engine_hours, i.id
+            LIMIT 5
+            """,
+            (company_id, today),
+        ).fetchall()
+
+        next_billing = conn.execute(
+            """
+            SELECT
+                b.id,
+                b.due_date,
+                b.billing_type,
+                c.id AS contract_id,
+                c.contract_number,
+                c.customer_name,
+                c.status AS contract_status
+            FROM contract_billing_events b
+            JOIN contracts c
+              ON c.id = b.contract_id
+            WHERE c.company_id = ?
+              AND b.status = 'planned'
+              AND b.due_date >= ?
+            ORDER BY b.due_date, b.id
+            LIMIT 5
+            """,
+            (company_id, today),
+        ).fetchall()
+
+        documents_to_sign = conn.execute(
+            """
+            SELECT
+                d.id,
+                d.document_name,
+                d.created_at,
+                c.id AS contract_id,
+                c.contract_number,
+                c.customer_name
+            FROM contract_documents d
+            JOIN contracts c
+              ON c.id = d.contract_id
+            WHERE d.company_id = ?
+              AND d.document_type = 'contract_pdf'
+              AND d.status = 'generated'
+            ORDER BY d.created_at DESC, d.id DESC
+            LIMIT 5
+            """,
+            (company_id,),
+        ).fetchall()
+
+    intervention_rows = ""
+
+    for row in next_interventions:
+        contract_status_label = (
+            "Brouillon"
+            if row["contract_status"] == "draft"
+            else "Actif"
+            if row["contract_status"] == "active"
+            else "Suspendu"
+            if row["contract_status"] == "suspended"
+            else "Inactif"
+            if row["contract_status"] == "inactive"
+            else row["contract_status"] or "-"
+        )
+
+        intervention_rows += f"""
+        <tr>
+            <td>{row["planned_date"] or "-"}</td>
+            <td>
+                <a href="/contract/{row["contract_id"]}">
+                    {row["contract_number"]}
+                </a>
+            </td>
+            <td>{row["customer_name"] or "-"}</td>
+            <td>{row["intervention_type"] or "-"}</td>
+            <td>{fmt_number(row["planned_engine_hours"])} h</td>
+            <td>{contract_status_label}</td>
+        </tr>
+        """
+
+    if not intervention_rows:
+        intervention_rows = """
+        <tr>
+            <td colspan="6">Aucune intervention a venir.</td>
+        </tr>
+        """
+
+    billing_rows = ""
+
+    for row in next_billing:
+        contract_status_label = (
+            "Brouillon"
+            if row["contract_status"] == "draft"
+            else "Actif"
+            if row["contract_status"] == "active"
+            else "Suspendu"
+            if row["contract_status"] == "suspended"
+            else "Inactif"
+            if row["contract_status"] == "inactive"
+            else row["contract_status"] or "-"
+        )
+
+        billing_rows += f"""
+        <tr>
+            <td>{row["due_date"] or "-"}</td>
+            <td>
+                <a href="/contract/{row["contract_id"]}">
+                    {row["contract_number"]}
+                </a>
+            </td>
+            <td>{row["customer_name"] or "-"}</td>
+            <td>{row["billing_type"] or "-"}</td>
+            <td>{contract_status_label}</td>
+        </tr>
+        """
+
+    if not billing_rows:
+        billing_rows = """
+        <tr>
+            <td colspan="5">Aucune echeance de facturation a venir.</td>
+        </tr>
+        """
+
+    document_rows = ""
+
+    for row in documents_to_sign:
+        document_rows += f"""
+        <tr>
+            <td>
+                <a href="/contract/{row["contract_id"]}">
+                    {row["contract_number"]}
+                </a>
+            </td>
+            <td>{row["customer_name"] or "-"}</td>
+            <td>{row["document_name"] or "-"}</td>
+            <td>{row["created_at"] or "-"}</td>
+        </tr>
+        """
+
+    if not document_rows:
+        document_rows = """
+        <tr>
+            <td colspan="4">Aucun contrat en attente de PDF signe.</td>
+        </tr>
+        """
+
+    content = f"""
+    <h2>Tableau de bord contrats</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <strong>Societe active :</strong> {company_name}
+    </div>
+
+    <div class="grid">
+        <div class="card">
+            <h3>{counts["total"] or 0}</h3>
+            <p>Contrats au total</p>
+        </div>
+
+        <div class="card">
+            <h3>{counts["active_count"] or 0}</h3>
+            <p>Actifs</p>
+        </div>
+
+        <div class="card">
+            <h3>{counts["draft_count"] or 0}</h3>
+            <p>Brouillons</p>
+        </div>
+
+        <div class="card">
+            <h3>{counts["suspended_count"] or 0}</h3>
+            <p>Suspendus</p>
+        </div>
+
+        <div class="card">
+            <h3>{counts["inactive_count"] or 0}</h3>
+            <p>Inactifs</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Prochaines interventions</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Contrat</th>
+                    <th>Client</th>
+                    <th>Intervention</th>
+                    <th>Compteur prevu</th>
+                    <th>Statut contrat</th>
+                </tr>
+            </thead>
+            <tbody>
+                {intervention_rows}
+            </tbody>
+        </table>
+
+        <p>
+            <a class="button secondary"
+               href="/contracts/interventions">
+                Voir toutes les interventions
+            </a>
+        </p>
+    </div>
+
+    <div class="card">
+        <h3>Prochaines facturations</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Contrat</th>
+                    <th>Client</th>
+                    <th>Mode</th>
+                    <th>Statut contrat</th>
+                </tr>
+            </thead>
+            <tbody>
+                {billing_rows}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Documents en attente de signature</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Contrat</th>
+                    <th>Client</th>
+                    <th>Document</th>
+                    <th>Generation</th>
+                </tr>
+            </thead>
+            <tbody>
+                {document_rows}
+            </tbody>
+        </table>
+    </div>
+    """
+
+    return HTMLResponse(
+        layout(
+            "Tableau de bord contrats",
+            content,
+        )
+    )
+
+
 @app.get("/contracts", response_class=HTMLResponse)
 def contracts_page(request: Request):
     login_response = require_login(request)
@@ -3846,6 +4147,196 @@ def contracts_page(request: Request):
 
     return layout("Contrats", content)
 
+
+
+@app.get("/contracts/interventions", response_class=HTMLResponse)
+def contracts_interventions_page(
+    request: Request,
+    status: str = "all",
+):
+    login_response = require_login(request)
+    if login_response:
+        return login_response
+
+    init_db()
+
+    company_id = get_active_company_id_for_request(request)
+    company_name = get_active_company_name_for_request(request)
+
+    allowed_statuses = {
+        "all",
+        "planned",
+        "completed",
+    }
+
+    if status not in allowed_statuses:
+        status = "all"
+
+    params = [company_id]
+
+    status_sql = ""
+
+    if status != "all":
+        status_sql = "AND i.status = ?"
+        params.append(status)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+                i.id AS intervention_id,
+                i.intervention_type,
+                i.planned_engine_hours,
+                i.planned_date,
+                i.actual_engine_hours,
+                i.actual_date,
+                i.status,
+                c.id AS contract_id,
+                c.contract_number,
+                c.customer_name,
+                c.product_designation,
+                c.product_name,
+                c.engine_serial_number,
+                c.status AS contract_status
+            FROM contract_interventions i
+            JOIN contracts c
+              ON c.id = i.contract_id
+            WHERE c.company_id = ?
+              {status_sql}
+            ORDER BY
+                CASE
+                    WHEN i.status = 'planned' THEN 0
+                    ELSE 1
+                END,
+                COALESCE(i.planned_date, i.actual_date),
+                c.contract_number,
+                i.planned_engine_hours,
+                i.id
+            """,
+            tuple(params),
+        ).fetchall()
+
+    rows_html = ""
+
+    for row in rows:
+        contract_status_label = (
+            "Brouillon"
+            if row["contract_status"] == "draft"
+            else "Actif"
+            if row["contract_status"] == "active"
+            else "Suspendu"
+            if row["contract_status"] == "suspended"
+            else "Inactif"
+            if row["contract_status"] == "inactive"
+            else row["contract_status"] or "-"
+        )
+
+        status_label = (
+            "Planifiee"
+            if row["status"] == "planned"
+            else "Realisee"
+            if row["status"] == "completed"
+            else row["status"] or "-"
+        )
+
+        rows_html += f"""
+        <tr>
+            <td>
+                <a href="/contract/{row["contract_id"]}">
+                    {row["contract_number"]}
+                </a>
+            </td>
+            <td>{row["customer_name"] or "-"}</td>
+            <td>{row["product_designation"] or row["product_name"] or "-"}</td>
+            <td>{row["engine_serial_number"] or "-"}</td>
+            <td>{row["intervention_type"] or "-"}</td>
+            <td>{row["planned_date"] or "-"}</td>
+            <td>{fmt_number(row["planned_engine_hours"])} h</td>
+            <td>{row["actual_date"] or "-"}</td>
+            <td>
+                {
+                    fmt_number(row["actual_engine_hours"]) + " h"
+                    if row["actual_engine_hours"] is not None
+                    else "-"
+                }
+            </td>
+            <td>{status_label}</td>
+            <td>{contract_status_label}</td>
+        </tr>
+        """
+
+    if not rows_html:
+        rows_html = """
+        <tr>
+            <td colspan="11">
+                Aucune intervention pour ce filtre.
+            </td>
+        </tr>
+        """
+
+    content = f"""
+    <h2>Interventions contrats</h2>
+
+    {contract_module_navigation()}
+
+    <div class="card">
+        <strong>Societe active :</strong> {company_name}
+    </div>
+
+    <div class="card">
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+            <a class="button secondary"
+               href="/contracts/interventions?status=all">
+                Toutes
+            </a>
+
+            <a class="button secondary"
+               href="/contracts/interventions?status=planned">
+                Planifiees
+            </a>
+
+            <a class="button secondary"
+               href="/contracts/interventions?status=completed">
+                Realisees
+            </a>
+
+            <a class="button secondary"
+               href="/contracts/planning">
+                Voir le planning
+            </a>
+        </div>
+
+        <div style="overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Contrat</th>
+                        <th>Client</th>
+                        <th>Machine / moteur</th>
+                        <th>N° serie</th>
+                        <th>Intervention</th>
+                        <th>Date prevue</th>
+                        <th>Heures prevues</th>
+                        <th>Date reelle</th>
+                        <th>Heures reelles</th>
+                        <th>Statut intervention</th>
+                        <th>Statut contrat</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    """
+
+    return HTMLResponse(
+        layout(
+            "Interventions contrats",
+            content,
+        )
+    )
 
 
 @app.get("/contracts/parts-forecast", response_class=HTMLResponse)
@@ -8515,11 +9006,13 @@ def contract_detail_page(
     </div>
 
     <div class="card">
-        <h3>Prochaine etape V1.1</h3>
+        <h3>Contrats V1.1 operationnels</h3>
         <p>
-            Ajout d'un releve compteur,
-            interventions et recalcul
-            automatique des echeances.
+            Le suivi des contrats est actif :
+            releves compteur, interventions,
+            recalcul automatique des echeances,
+            facturation, diffusions, documents,
+            CGV / CGDV et PDF signes.
         </p>
     </div>
 
