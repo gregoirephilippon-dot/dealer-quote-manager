@@ -9161,10 +9161,15 @@ def settings_page(request: Request):
     inputs = ""
     for key, label, help_text in fields:
         inputs += f"""
-        <div class="card">
+        <div>
             <label>
                 <strong>{label}</strong><br>
-                <input type="number" step="0.01" name="{key}" value="{settings.get(key, 0)}">
+                <input
+                    type="number"
+                    step="0.01"
+                    name="{key}"
+                    value="{settings.get(key, 0)}"
+                >
             </label>
             <p class="muted">{help_text}</p>
         </div>
@@ -9174,21 +9179,45 @@ def settings_page(request: Request):
     <h2>Paramètres de calcul dealer</h2>
 
     <div class="card">
+        <h3 style="margin-top:0;">Configuration du calcul</h3>
         <p>
-            Ces paramètres servent au calcul de l’offre de contrat :
-            marges, frais administratifs, frais logistiques, déplacement et indexation.
+            Ces paramètres sont utilisés lors du calcul et du recalcul
+            des offres de contrat.
         </p>
-        <p>
+        <p class="muted">
             Page réservée aux administrateurs de la société.
         </p>
     </div>
 
     <form action="/settings" method="post">
-        {inputs}
-        {yearly_indexation_html}
 
-        <button type="submit">Enregistrer les paramètres de calcul</button>
-        <a class="button secondary" href="/">Retour offres contrats</a>
+        <div class="card">
+            <h3 style="margin-top:0;">1 — Paramètres de base</h3>
+
+            <p class="muted">
+                Marges et frais appliqués au calcul de l'offre.
+            </p>
+
+            <div class="grid" style="grid-template-columns:repeat(2, minmax(0, 1fr));">
+                {inputs}
+            </div>
+        </div>
+
+        <div>
+            <h3>2 — Indexation annuelle</h3>
+            {yearly_indexation_html}
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+            <button class="button green" type="submit">
+                Enregistrer les paramètres
+            </button>
+
+            <a class="button secondary" href="/">
+                Retour aux offres
+            </a>
+        </div>
+
     </form>
     """
     return layout("Paramètres de calcul dealer", content)
