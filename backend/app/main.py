@@ -1401,6 +1401,14 @@ def home(request: Request):
             SELECT
                    q.id, q.created_at, q.status, q.customer_name, q.product_designation, q.engine_serial_number,
                    q.currency, q.total_cost, q.selling_total, q.selling_monthly, q.selling_per_hour, q.total_hours,
+                   (
+                       SELECT ct.id
+                       FROM contracts ct
+                       WHERE ct.quote_id = q.id
+                         AND ct.company_id = q.company_id
+                       ORDER BY ct.id DESC
+                       LIMIT 1
+                   ) AS contract_id,
                    COALESCE(c.name, 'Sans société') AS company_name
             FROM quotes q
             LEFT JOIN companies c ON c.id = q.company_id
@@ -1486,6 +1494,9 @@ def home(request: Request):
                 </a>
 
                 {
+                    f'<a class="button green" href="/contract/{row["contract_id"]}">Consulter le contrat</a>'
+                    if row["contract_id"]
+                    else
                     f'<a class="button gold" href="/quote/{quote_id}/contract/create">Creer le contrat</a>'
                     if status_value == 'accepted'
                     else ''
