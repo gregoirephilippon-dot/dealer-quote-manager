@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 import sqlite3
 from pathlib import Path
 
@@ -14,10 +14,18 @@ def get_sqlite_db_path() -> Path:
     return config.BASE_DIR / db_relative
 
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def get_connection():
     db_path = get_sqlite_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, factory=ClosingConnection)
     conn.row_factory = sqlite3.Row
     return conn
 

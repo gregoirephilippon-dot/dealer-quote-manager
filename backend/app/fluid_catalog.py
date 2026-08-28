@@ -33,13 +33,13 @@ def get_price_catalog_item(part_no):
     if not part_no:
         return None
 
-    conn = get_connection()
-    row = conn.execute("""
-        SELECT part_no, description, price_excl_vat, discount_code, unit,
-               product_group, function_group, weight
-        FROM price_catalog
-        WHERE part_no = ?
-    """, (str(part_no).strip(),)).fetchone()
+    with get_connection() as conn:
+        row = conn.execute("""
+            SELECT part_no, description, price_excl_vat, discount_code, unit,
+                   product_group, function_group, weight
+            FROM price_catalog
+            WHERE part_no = ?
+        """, (str(part_no).strip(),)).fetchone()
 
     if not row:
         return None
@@ -50,15 +50,14 @@ def get_price_catalog_item(part_no):
 
 
 def search_engine_oil_catalog_items():
-    conn = get_connection()
-
-    rows = conn.execute("""
-        SELECT part_no, description, price_excl_vat, discount_code, unit,
-               product_group, function_group, weight
-        FROM price_catalog
-        WHERE lower(description) = 'engine oil'
-        ORDER BY weight, price_excl_vat, part_no
-    """).fetchall()
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT part_no, description, price_excl_vat, discount_code, unit,
+                   product_group, function_group, weight
+            FROM price_catalog
+            WHERE lower(description) = 'engine oil'
+            ORDER BY weight, price_excl_vat, part_no
+        """).fetchall()
 
     results = []
     for row in rows:
@@ -127,17 +126,16 @@ def get_coolant_packaging_liters(part_no, weight=0):
 
 
 def search_engine_coolant_catalog_items():
-    conn = get_connection()
-
-    rows = conn.execute("""
-        SELECT part_no, description, price_excl_vat, discount_code, unit,
-               product_group, function_group, weight
-        FROM price_catalog
-        WHERE product_group = '1900'
-          AND function_group = '1841'
-          AND upper(description) = 'LIQUIDE REFROIDISSEMENT'
-        ORDER BY weight, price_excl_vat, part_no
-    """).fetchall()
+    with get_connection() as conn:
+        rows = conn.execute("""
+            SELECT part_no, description, price_excl_vat, discount_code, unit,
+                   product_group, function_group, weight
+            FROM price_catalog
+            WHERE product_group = '1900'
+              AND function_group = '1841'
+              AND upper(description) = 'LIQUIDE REFROIDISSEMENT'
+            ORDER BY weight, price_excl_vat, part_no
+        """).fetchall()
 
     results = []
     for row in rows:
