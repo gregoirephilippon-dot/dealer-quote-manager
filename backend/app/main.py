@@ -456,7 +456,6 @@ def layout(title, content):
         <div class="nav-row">
             <span class="nav-label">Metier</span>
             <a href="/">Offres</a>
-            <a href="/import">Importer</a>
             <a href="/contracts/dashboard">Contrats</a>
             <a href="/price-catalog">Catalogue pieces</a>
         </div>
