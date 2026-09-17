@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 from database import get_connection, init_db
+from client_translation import translate_service_name_for_client
 
 
 try:
@@ -441,7 +442,9 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         for service in services:
             service_data.append(
                 [
-                    service["service_name"] or "",
+                    translate_service_name_for_client(
+                        service["service_name"] or ""
+                    ),
                 ]
             )
 
