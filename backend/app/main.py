@@ -2014,6 +2014,13 @@ def ensure_quote_fluid_columns():
         ("replace_imported_oil", "INTEGER DEFAULT 0"),
         ("replace_imported_coolant", "INTEGER DEFAULT 0"),
         ("pricing_trace_json", "TEXT"),
+        ("customer_address", "TEXT"),
+        ("customer_postal_code", "TEXT"),
+        ("customer_city", "TEXT"),
+        ("customer_contact", "TEXT"),
+        ("customer_phone", "TEXT"),
+        ("customer_email", "TEXT"),
+        ("customer_siret", "TEXT"),
         ("travel_distance_one_way_km", "REAL DEFAULT 0"),
         ("travel_time_one_way_hours", "REAL DEFAULT 0"),
         ("travel_round_trips_per_intervention", "REAL DEFAULT 1"),
@@ -2376,7 +2383,14 @@ def quote_inputs_page(quote_id: int, request: Request):
     <form action="/quote/{quote_id}/inputs" method="post">
         <h3>Informations client, moteur et contrat</h3>
         <div class="card grid">
-            <label>Client<input type="text" name="customer_name" value="{quote['customer_name'] or ''}"></label>
+            <label>Raison sociale / Client<input type="text" name="customer_name" value="{quote['customer_name'] or ''}"></label>
+            <label>SIRET<input type="text" name="customer_siret" value="{quote['customer_siret'] or ''}" placeholder="14 chiffres"></label>
+            <label>Adresse<input type="text" name="customer_address" value="{quote['customer_address'] or ''}"></label>
+            <label>Code postal<input type="text" name="customer_postal_code" value="{quote['customer_postal_code'] or ''}"></label>
+            <label>Ville<input type="text" name="customer_city" value="{quote['customer_city'] or ''}"></label>
+            <label>Contact<input type="text" name="customer_contact" value="{quote['customer_contact'] or ''}"></label>
+            <label>Téléphone<input type="text" name="customer_phone" value="{quote['customer_phone'] or ''}"></label>
+            <label>E-mail<input type="email" name="customer_email" value="{quote['customer_email'] or ''}"></label>
             <label>Désignation produit<input type="text" name="product_designation" value="{quote['product_designation'] or ''}"></label>
             <label>Numéro de série moteur<input type="text" name="engine_serial_number" value="{quote['engine_serial_number'] or ''}"></label>
             <label>Nom produit<input type="text" name="product_name" value="{quote['product_name'] or ''}"></label>
@@ -2703,6 +2717,13 @@ def save_quote_inputs(
     quote_id: int,
     request: Request,
     customer_name: str = Form(""),
+    customer_address: str = Form(""),
+    customer_postal_code: str = Form(""),
+    customer_city: str = Form(""),
+    customer_contact: str = Form(""),
+    customer_phone: str = Form(""),
+    customer_email: str = Form(""),
+    customer_siret: str = Form(""),
     product_designation: str = Form(""),
     engine_serial_number: str = Form(""),
     product_name: str = Form(""),
@@ -2792,7 +2813,15 @@ def save_quote_inputs(
         conn.execute(
             """
             UPDATE quotes
-            SET customer_name=?, product_designation=?, engine_serial_number=?, product_name=?, country=?, status=?,
+            SET customer_name=?,
+                customer_address=?,
+                customer_postal_code=?,
+                customer_city=?,
+                customer_contact=?,
+                customer_phone=?,
+                customer_email=?,
+                customer_siret=?,
+                product_designation=?, engine_serial_number=?, product_name=?, country=?, status=?,
                 total_hours=?, hours_per_year=?, labour_rate=?, total_parts=?, total_labour=?, total_misc=?,
                 travel_distance_one_way_km=?,
                 travel_time_one_way_hours=?,
@@ -2814,7 +2843,16 @@ def save_quote_inputs(
                 total_cost=?, currency=?
             WHERE id=? AND company_id=?
             """,
-            (customer_name.strip(), product_designation.strip(), engine_serial_number.strip(), product_name.strip(), country.strip(), status,
+            (
+             customer_name.strip(),
+             customer_address.strip(),
+             customer_postal_code.strip(),
+             customer_city.strip(),
+             customer_contact.strip(),
+             customer_phone.strip(),
+             customer_email.strip(),
+             customer_siret.strip(),
+             product_designation.strip(), engine_serial_number.strip(), product_name.strip(), country.strip(), status,
              total_hours, hours_per_year, labour_rate, total_parts, total_labour, total_misc,
              max(0, travel_distance_one_way_km or 0),
              max(0, travel_time_one_way_hours or 0),

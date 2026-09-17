@@ -44,6 +44,13 @@ def init_db():
                 status TEXT DEFAULT 'draft',
 
                 customer_name TEXT,
+                customer_address TEXT,
+                customer_postal_code TEXT,
+                customer_city TEXT,
+                customer_contact TEXT,
+                customer_phone TEXT,
+                customer_email TEXT,
+                customer_siret TEXT,
                 engine_serial_number TEXT,
                 product_name TEXT,
                 product_designation TEXT,

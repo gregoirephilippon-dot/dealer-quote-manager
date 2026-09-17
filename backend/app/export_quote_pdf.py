@@ -385,14 +385,27 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     story.append(title_table)
     story.append(Spacer(1, 8))
 
+    story.append(Paragraph("Informations client", styles["Section"]))
+    add_kv_table(
+        story,
+        [
+            ["Client", quote["customer_name"] or "-", "SIRET", quote["customer_siret"] or "-"],
+            ["Adresse", quote["customer_address"] or "-", "Code postal", quote["customer_postal_code"] or "-"],
+            ["Ville", quote["customer_city"] or "-", "Contact", quote["customer_contact"] or "-"],
+            ["Telephone", quote["customer_phone"] or "-", "E-mail", quote["customer_email"] or "-"],
+        ],
+    )
+
+    story.append(Spacer(1, 8))
+
     story.append(Paragraph("Informations moteur", styles["Section"]))
     add_kv_table(
         story,
         [
-            ["Client", quote["customer_name"] or "-", "Designation", quote["product_designation"] or "-"],
-            ["Numero de serie", quote["engine_serial_number"] or "-", "Produit", quote["product_name"] or "-"],
-            ["Pays", quote["country"] or "-", "Devise", currency],
-            ["Heures contrat", number(quote["total_hours"], " h"), "Heures par an", number(quote["hours_per_year"], " h")],
+            ["Designation", quote["product_designation"] or "-", "Numero de serie", quote["engine_serial_number"] or "-"],
+            ["Produit", quote["product_name"] or "-", "Pays", quote["country"] or "-"],
+            ["Devise", currency, "Heures contrat", number(quote["total_hours"], " h")],
+            ["Heures par an", number(quote["hours_per_year"], " h"), "", ""],
         ],
     )
 

@@ -202,6 +202,15 @@ def get_quote(quote_id: int):
 def render_quote_html(quote, lines, interventions):
     currency = quote["currency"] or "EUR"
 
+    customer_name = escape(str(quote["customer_name"] or "-"))
+    customer_address = escape(str(quote["customer_address"] or "-"))
+    customer_postal_code = escape(str(quote["customer_postal_code"] or "-"))
+    customer_city = escape(str(quote["customer_city"] or "-"))
+    customer_contact = escape(str(quote["customer_contact"] or "-"))
+    customer_phone = escape(str(quote["customer_phone"] or "-"))
+    customer_email = escape(str(quote["customer_email"] or "-"))
+    customer_siret = escape(str(quote["customer_siret"] or "-"))
+
     product_designation = escape(str(quote["product_designation"] or ""))
     serial = escape(str(quote["engine_serial_number"] or ""))
     status = escape(str(quote["status"] or ""))
@@ -386,6 +395,42 @@ def render_quote_html(quote, lines, interventions):
                 {render_company_identity_html(quote)}
                 <div class="badge" style="margin-top: 10px;">Statut : {status}</div>
                 <div class="muted" style="margin-top: 8px;">Offre ID {quote['id']} - {created_at}</div>
+            </div>
+        </div>
+
+        <h2>Informations client</h2>
+        <div class="grid">
+            <div class="card">
+                <div class="label">Raison sociale / Client</div>
+                <div class="value">{customer_name}</div>
+            </div>
+            <div class="card">
+                <div class="label">SIRET</div>
+                <div class="value">{customer_siret}</div>
+            </div>
+            <div class="card">
+                <div class="label">Adresse</div>
+                <div class="value">{customer_address}</div>
+            </div>
+            <div class="card">
+                <div class="label">Code postal</div>
+                <div class="value">{customer_postal_code}</div>
+            </div>
+            <div class="card">
+                <div class="label">Ville</div>
+                <div class="value">{customer_city}</div>
+            </div>
+            <div class="card">
+                <div class="label">Contact</div>
+                <div class="value">{customer_contact}</div>
+            </div>
+            <div class="card">
+                <div class="label">Téléphone</div>
+                <div class="value">{customer_phone}</div>
+            </div>
+            <div class="card">
+                <div class="label">E-mail</div>
+                <div class="value">{customer_email}</div>
             </div>
         </div>
 
