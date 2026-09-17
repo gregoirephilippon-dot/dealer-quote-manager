@@ -437,18 +437,15 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
 
     if services:
         story.append(Paragraph("Services inclus", styles["Section"]))
-        service_data = [["ID", "Service", "Temps", "Qte"]]
+        service_data = [["Service"]]
         for service in services:
             service_data.append(
                 [
-                    service["service_id"] or "",
                     service["service_name"] or "",
-                    number(service["work_time_hours"], " h"),
-                    number(service["quantity"]),
                 ]
             )
 
-        service_table = Table(service_data, colWidths=[22 * mm, 105 * mm, 26 * mm, 22 * mm], repeatRows=1)
+        service_table = Table(service_data, colWidths=[175 * mm], repeatRows=1)
         service_table.setStyle(
             TableStyle(
                 [
