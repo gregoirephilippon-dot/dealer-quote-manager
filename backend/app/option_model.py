@@ -70,9 +70,7 @@ def calculate_option_price(labour_rate, travel_fee, work_time_hours, quantity, u
     total += qty * _to_float(unit_price)
     total += _to_float(fixed_price)
 
-    if str(extra_travel).strip().lower() in ("yes", "oui", "include", "included", "1", "true"):
-        total += _to_float(travel_fee)
-
+    # Les déplacements sont désormais calculés globalement au niveau du devis.
     return round(total, 2)
 
 

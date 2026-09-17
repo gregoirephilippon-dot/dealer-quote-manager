@@ -16,9 +16,17 @@ DEFAULT_SETTINGS = {
         "value": 1,
         "description": "Frais logistiques en pourcentage",
     },
-    "travel_fee_fixed": {
+    "travel_price_per_km": {
         "value": 0,
-        "description": "Frais de deplacement fixes",
+        "description": "Tarif deplacement par kilometre",
+    },
+    "travel_hourly_rate": {
+        "value": 0,
+        "description": "Taux horaire temps de trajet",
+    },
+    "equipment_moved_percent": {
+        "value": 0,
+        "description": "Majoration si materiel deplace en pourcentage",
     },
     "indexation_parts_year_1": {
         "value": 0,

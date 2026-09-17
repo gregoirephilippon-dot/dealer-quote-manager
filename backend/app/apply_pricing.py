@@ -50,18 +50,16 @@ def is_overview_imported_service(service):
     )
 
 
-def calculate_service_price(service, labour_rate, travel_fee):
+def calculate_service_price(service, labour_rate, travel_fee=0):
     work_time = service["work_time_hours"] or 0
     quantity = service["quantity"] or 0
     unit_price = service["unit_price"] or 0
     fixed_price = service["fixed_price"] or 0
-    extra_travel = service["extra_travel"] or "Exclude"
 
     labour_part = work_time * labour_rate
     quantity_part = quantity * unit_price
-    travel_part = travel_fee if str(extra_travel).lower() == "yes" else 0
 
-    return fixed_price + labour_part + quantity_part + travel_part
+    return fixed_price + labour_part + quantity_part
 
 
 
@@ -476,6 +474,10 @@ def apply_pricing(quote_id: int):
                 source_labour_rate,
                 source_total_labour_hours,
                 source_total_labour_cost,
+                travel_distance_one_way_km,
+                travel_time_one_way_hours,
+                travel_round_trips_per_intervention,
+                equipment_moved,
                 oil_catalog_part_no,
                 oil_price_per_liter,
                 oil_service_count,
@@ -648,7 +650,53 @@ def apply_pricing(quote_id: int):
         labour_margin = settings.get("labour_margin_percent", 0)
         admin_fee = settings.get("admin_fee_percent", 0)
         logistics_fee = settings.get("logistics_fee_percent", 0)
-        travel_fee_fixed = settings.get("travel_fee_fixed", 0)
+
+        travel_price_per_km = settings.get("travel_price_per_km", 0)
+        travel_hourly_rate = settings.get("travel_hourly_rate", 0)
+        equipment_moved_percent = settings.get("equipment_moved_percent", 0)
+
+        travel_distance_one_way_km = to_float(
+            quote_value(quote, "travel_distance_one_way_km", 0)
+        )
+        travel_time_one_way_hours = to_float(
+            quote_value(quote, "travel_time_one_way_hours", 0)
+        )
+        travel_round_trips_per_intervention = to_float(
+            quote_value(quote, "travel_round_trips_per_intervention", 1)
+        )
+        equipment_moved = bool(
+            quote_value(quote, "equipment_moved", 0)
+        )
+
+        intervention_row = conn.execute(
+            """
+            SELECT COUNT(*) AS intervention_count
+            FROM interventions
+            WHERE quote_id = ?
+            """,
+            (quote_id,),
+        ).fetchone()
+
+        intervention_count = int(
+            intervention_row["intervention_count"] or 0
+        )
+
+        travel_km_amount = (
+            travel_distance_one_way_km
+            * 2
+            * travel_round_trips_per_intervention
+            * intervention_count
+            * travel_price_per_km
+        )
+
+        travel_time_amount = (
+            travel_time_one_way_hours
+            * 2
+            * travel_round_trips_per_intervention
+            * intervention_count
+            * travel_hourly_rate
+        )
+
         contract_years = get_contract_year_count(total_hours, hours_per_year)
 
         dealer_parts_total, selling_parts, dc_lines_used = calculate_parts_totals_with_dc(
@@ -788,7 +836,7 @@ def apply_pricing(quote_id: int):
                 # Ne pas recalculer avec work_time_hours x labour_rate.
                 service_price = service["fixed_price"] or service["calculated_price"] or 0
             else:
-                service_price = calculate_service_price(service, labour_rate_input, travel_fee_fixed)
+                service_price = calculate_service_price(service, labour_rate_input)
 
             is_fluid_target = (
                 fluid_service_id
@@ -882,13 +930,28 @@ def apply_pricing(quote_id: int):
         logistics_fee_amount = non_indexed_subtotal * logistics_fee / 100
         admin_fee_amount = non_indexed_subtotal * admin_fee / 100
 
-        selling_total = (
+        selling_total_before_equipment_moved = (
             indexed_parts
             + indexed_labour
             + selling_misc
             + additional_services_total
             + logistics_fee_amount
             + admin_fee_amount
+            + travel_km_amount
+            + travel_time_amount
+        )
+
+        equipment_moved_amount = (
+            selling_total_before_equipment_moved
+            * equipment_moved_percent
+            / 100
+            if equipment_moved
+            else 0
+        )
+
+        selling_total = (
+            selling_total_before_equipment_moved
+            + equipment_moved_amount
         )
 
         selling_per_hour = None
@@ -1018,7 +1081,17 @@ def apply_pricing(quote_id: int):
                 "dealer_total": fluid_dealer_total,
             },
             "fees": {
-                "travel_fixed_setting": travel_fee_fixed,
+                "travel_price_per_km": travel_price_per_km,
+                "travel_hourly_rate": travel_hourly_rate,
+                "travel_distance_one_way_km": travel_distance_one_way_km,
+                "travel_time_one_way_hours": travel_time_one_way_hours,
+                "travel_round_trips_per_intervention": travel_round_trips_per_intervention,
+                "intervention_count": intervention_count,
+                "travel_km_amount": travel_km_amount,
+                "travel_time_amount": travel_time_amount,
+                "equipment_moved": equipment_moved,
+                "equipment_moved_percent": equipment_moved_percent,
+                "equipment_moved_amount": equipment_moved_amount,
                 "logistics_percent": logistics_fee,
                 "logistics_amount": logistics_fee_amount,
                 "admin_percent": admin_fee,
@@ -1082,7 +1155,10 @@ def apply_pricing(quote_id: int):
     print(f"Huile importee neutralisee : {'oui' if replace_imported_oil else 'non'}")
     print(f"Coolant importe detecte : {'oui' if imported_coolant_present else 'non'}")
     print(f"Coolant importe neutralise : {'oui' if replace_imported_coolant else 'non'}")
-    print(f"Frais deplacement fixes : {travel_fee_fixed:.2f} {currency}")
+    print(f"Interventions : {intervention_count}")
+    print(f"Deplacement kilometrique : {travel_km_amount:.2f} {currency}")
+    print(f"Temps de trajet : {travel_time_amount:.2f} {currency}")
+    print(f"Majoration materiel deplace : {equipment_moved_amount:.2f} {currency}")
     print(f"Frais logistique : {logistics_fee}%")
     print(f"Frais admin : {admin_fee}%")
     print(f"Durée contrat calculée : {contract_years} an(s)")

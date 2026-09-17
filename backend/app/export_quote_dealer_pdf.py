@@ -549,7 +549,8 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     settings_rows = [
         ["Calcul pieces", "Remises DC par famille", "Marge main d'oeuvre", f"{settings.get('labour_margin_percent', 0)} %"],
         ["Frais admin", f"{settings.get('admin_fee_percent', 0)} %", "Frais logistique", f"{settings.get('logistics_fee_percent', 0)} %"],
-        ["Frais deplacement fixes", money(settings.get("travel_fee_fixed", 0), currency), "Indexations", "Annuel/cumulatif"],
+        ["Tarif kilometrique", f"{settings.get('travel_price_per_km', 0)} EUR/km", "Taux horaire trajet", f"{settings.get('travel_hourly_rate', 0)} EUR/h"],
+        ["Majoration materiel deplace", f"{settings.get('equipment_moved_percent', 0)} %", "Indexations", "Annuel/cumulatif"],
     ]
     add_kv_table(story, settings_rows)
 

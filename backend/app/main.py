@@ -2014,6 +2014,10 @@ def ensure_quote_fluid_columns():
         ("replace_imported_oil", "INTEGER DEFAULT 0"),
         ("replace_imported_coolant", "INTEGER DEFAULT 0"),
         ("pricing_trace_json", "TEXT"),
+        ("travel_distance_one_way_km", "REAL DEFAULT 0"),
+        ("travel_time_one_way_hours", "REAL DEFAULT 0"),
+        ("travel_round_trips_per_intervention", "REAL DEFAULT 1"),
+        ("equipment_moved", "INTEGER DEFAULT 0"),
     ]
 
     with get_connection() as conn:
@@ -2395,6 +2399,42 @@ def quote_inputs_page(quote_id: int, request: Request):
             <label>Coût total main-d’œuvre<input type="number" step="0.01" name="total_labour" value="{fmt_number(quote['total_labour'])}" readonly></label>
             <label>Coût divers<input type="number" step="0.01" name="total_misc" value="{fmt_number(quote['total_misc'])}"></label>
 
+            <h2 style="
+                grid-column:1 / -1;
+                margin:22px 0 4px 0;
+                padding-top:18px;
+                border-top:1px solid #d8dee6;
+            ">Déplacements</h2>
+
+            <label>
+                Distance aller simple (km)
+                <input type="number" min="0" step="0.01"
+                       name="travel_distance_one_way_km"
+                       value="{fmt_number(quote['travel_distance_one_way_km'])}">
+            </label>
+
+            <label>
+                Temps trajet aller simple (h)
+                <input type="number" min="0" step="0.01"
+                       name="travel_time_one_way_hours"
+                       value="{fmt_number(quote['travel_time_one_way_hours'])}">
+            </label>
+
+            <label>
+                Allers-retours par intervention
+                <input type="number" min="0" step="1"
+                       name="travel_round_trips_per_intervention"
+                       value="{fmt_number(quote['travel_round_trips_per_intervention'])}">
+            </label>
+
+            <label>
+                Matériel déplacé
+                <select name="equipment_moved">
+                    <option value="0" {"selected" if not quote["equipment_moved"] else ""}>Non</option>
+                    <option value="1" {"selected" if quote["equipment_moved"] else ""}>Oui</option>
+                </select>
+            </label>
+
             <input
                 type="hidden"
                 name="replace_overview_fluids"
@@ -2674,6 +2714,10 @@ def save_quote_inputs(
     total_parts: float = Form(0),
     total_labour: float = Form(0),
     total_misc: float = Form(0),
+    travel_distance_one_way_km: float = Form(0),
+    travel_time_one_way_hours: float = Form(0),
+    travel_round_trips_per_intervention: float = Form(1),
+    equipment_moved: int = Form(0),
     oil_catalog_part_no: str = Form(""),
     oil_price_per_liter: float = Form(0),
     oil_service_count: float = Form(0),
@@ -2750,6 +2794,10 @@ def save_quote_inputs(
             UPDATE quotes
             SET customer_name=?, product_designation=?, engine_serial_number=?, product_name=?, country=?, status=?,
                 total_hours=?, hours_per_year=?, labour_rate=?, total_parts=?, total_labour=?, total_misc=?,
+                travel_distance_one_way_km=?,
+                travel_time_one_way_hours=?,
+                travel_round_trips_per_intervention=?,
+                equipment_moved=?,
                 oil_catalog_part_no=?,
                 oil_price_per_liter=?, oil_service_count=?, oil_quantity_per_service=?,
                 oil_packaging_mode=?,
@@ -2768,6 +2816,10 @@ def save_quote_inputs(
             """,
             (customer_name.strip(), product_designation.strip(), engine_serial_number.strip(), product_name.strip(), country.strip(), status,
              total_hours, hours_per_year, labour_rate, total_parts, total_labour, total_misc,
+             max(0, travel_distance_one_way_km or 0),
+             max(0, travel_time_one_way_hours or 0),
+             max(0, travel_round_trips_per_intervention or 0),
+             1 if equipment_moved else 0,
              oil_catalog_part_no.strip() or None,
              oil_price_per_liter, oil_service_count, oil_quantity_per_service,
              oil_packaging_mode.strip() or 'consumed',
@@ -9165,7 +9217,9 @@ def settings_page(request: Request):
         ("labour_margin_percent", "Marge main-d’œuvre (%)", "Marge appliquée sur la main-d’œuvre."),
         ("admin_fee_percent", "Frais administratifs (%)", "Frais de gestion, facturation et mise en place du contrat."),
         ("logistics_fee_percent", "Frais logistiques (%)", "Frais liés à l’expédition, préparation ou gestion des pièces."),
-        ("travel_fee_fixed", "Frais déplacement fixes", "Montant fixe ajouté pour le déplacement si utilisé dans le calcul."),
+        ("travel_price_per_km", "Tarif kilométrique (€/km)", "Prix facturé par kilomètre parcouru."),
+        ("travel_hourly_rate", "Taux horaire trajet (€/h)", "Prix facturé par heure de trajet."),
+        ("equipment_moved_percent", "Majoration matériel déplacé (%)", "Pourcentage appliqué au total lorsque le matériel doit être déplacé."),
     ]
 
     inputs = ""
@@ -9238,13 +9292,17 @@ async def save_settings(
     labour_margin_percent: float = Form(...),
     admin_fee_percent: float = Form(...),
     logistics_fee_percent: float = Form(...),
-    travel_fee_fixed: float = Form(...),
+    travel_price_per_km: float = Form(...),
+    travel_hourly_rate: float = Form(...),
+    equipment_moved_percent: float = Form(...),
 ):
     ensure_default_settings()
     set_setting("labour_margin_percent", labour_margin_percent)
     set_setting("admin_fee_percent", admin_fee_percent)
     set_setting("logistics_fee_percent", logistics_fee_percent)
-    set_setting("travel_fee_fixed", travel_fee_fixed)
+    set_setting("travel_price_per_km", travel_price_per_km)
+    set_setting("travel_hourly_rate", travel_hourly_rate)
+    set_setting("equipment_moved_percent", equipment_moved_percent)
     request_form = await request.form()
 
     for year_number in range(1, 11):

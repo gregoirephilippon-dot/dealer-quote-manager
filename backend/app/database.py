@@ -61,6 +61,11 @@ def init_db():
                 total_labour REAL,
                 total_misc REAL,
 
+                travel_distance_one_way_km REAL DEFAULT 0,
+                travel_time_one_way_hours REAL DEFAULT 0,
+                travel_round_trips_per_intervention REAL DEFAULT 1,
+                equipment_moved INTEGER DEFAULT 0,
+
                 oil_catalog_part_no TEXT,
                 oil_price_per_liter REAL DEFAULT 0,
                 oil_service_count REAL DEFAULT 0,
