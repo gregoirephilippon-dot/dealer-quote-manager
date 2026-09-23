@@ -501,16 +501,6 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     )
     story.append(table)
 
-    story.append(Spacer(1, 10))
-    story.append(Paragraph("Conditions et remarques", styles["Section"]))
-    story.append(Paragraph(
-        "Ce contrat de maintenance pieces et service est etabli sous reserve de validation technique, "
-        "de disponibilite des pieces et de confirmation des conditions contractuelles applicables. "
-        "La garantie supplementaire indiquee est limitee a 1 an et 3000 heures moteur, selon le premier terme atteint. "
-        "Les prestations realisees restent limitees au perimetre des services inclus dans le present document.",
-        styles["Small"],
-    ))
-
     story.append(Spacer(1, 18))
     story.append(Paragraph("Signatures", styles["Section"]))
     signature_table = Table(

@@ -22,6 +22,8 @@ from reportlab.platypus import (
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 EXPORT_DIR = BASE_DIR / "data" / "exports"
+CONTRACT_ASSET_DIR = Path(__file__).resolve().parent / "contract_assets"
+CGV_BANNER_PATH = CONTRACT_ASSET_DIR / "CGV.jpg"
 
 
 def money(value, currency="EUR"):
@@ -492,33 +494,35 @@ def export_contract_pdf(contract_id):
 
     story.append(intervention_table)
 
-    story.append(PageBreak())
 
-    terms_story(
-        story,
-        "Conditions Generales de Vente - CGV",
-        cgv,
-        styles,
-    )
+    if cgdv is not None:
+        story.append(PageBreak())
 
-    story.append(Spacer(1, 10))
-
-    terms_story(
-        story,
-        "Conditions Generales de Vente / Service - CGDV",
-        cgdv,
-        styles,
-    )
+        terms_story(
+            story,
+            "Conditions Generales de Vente / Service - CGDV",
+            cgdv,
+            styles,
+        )
 
     story.append(PageBreak())
 
     story.append(Paragraph("Acceptation du contrat", styles["ContractSection"]))
 
+    acceptance_text = (
+        "Les parties reconnaissent avoir pris connaissance du present "
+        "contrat et des CGV accessibles en ligne via le QR code figurant "
+        "a la fin du present document"
+    )
+
+    if cgdv is not None:
+        acceptance_text += ", ainsi que des CGDV associees au contrat"
+
+    acceptance_text += "."
+
     story.append(
         Paragraph(
-            "Les parties reconnaissent avoir pris connaissance du present "
-            "contrat ainsi que des versions de CGV et CGDV qui lui sont "
-            "associees.",
+            acceptance_text,
             styles["ContractSmall"],
         )
     )
@@ -553,6 +557,35 @@ def export_contract_pdf(contract_id):
     )
 
     story.append(signature_table)
+    story.append(Spacer(1, 14))
+
+    if not CGV_BANNER_PATH.exists():
+        raise FileNotFoundError(
+            f"Bandeau CGV introuvable : {CGV_BANNER_PATH}"
+        )
+
+    cgv_banner = Image(str(CGV_BANNER_PATH))
+    cgv_banner._restrictSize(125 * mm, 25 * mm)
+
+    banner_table = Table(
+        [[cgv_banner]],
+        colWidths=[125 * mm],
+    )
+
+    banner_table.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    story.append(banner_table)
 
     def footer(canvas, document):
         canvas.saveState()

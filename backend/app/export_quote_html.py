@@ -487,9 +487,6 @@ def render_quote_html(quote, lines, interventions):
             </tbody>
         </table>
 
-        <h2>Conditions et remarques</h2>
-        <p class="muted">Offre etablie sous reserve de validation technique, disponibilite des pieces et conditions contractuelles applicables.</p>
-
         <div class="footer">
             Offre client generee automatiquement par Dealer Quote Manager.
         </div>

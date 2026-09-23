@@ -8295,29 +8295,6 @@ def contract_generate_pdf(
             status_code=404,
         )
 
-    if not contract["cgv_version_id"] and not contract["cgdv_version_id"]:
-        return HTMLResponse(
-            layout(
-                "PDF contrat",
-                f"""
-                <div class="card">
-                    <h2>Conditions contractuelles manquantes</h2>
-                    <p>
-                        Associe d'abord les versions CGV / CGDV
-                        applicables au contrat.
-                    </p>
-                    <p>
-                        <a class="button secondary"
-                           href="/contract/{contract_id}">
-                            Retour au contrat
-                        </a>
-                    </p>
-                </div>
-                """,
-            ),
-            status_code=400,
-        )
-
     try:
         from export_contract_pdf import export_contract_pdf
         pdf_path = export_contract_pdf(contract_id)
