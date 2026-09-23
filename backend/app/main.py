@@ -2002,6 +2002,7 @@ def ensure_quote_fluid_columns():
         ("oil_quantity_per_service", "REAL DEFAULT 0"),
         ("oil_packaging_mode", "TEXT DEFAULT 'consumed'"),
         ("oil_packaging_liters", "REAL DEFAULT 0"),
+        ("oil_additional_discount_percent", "REAL DEFAULT 0"),
         ("coolant_catalog_part_no", "TEXT"),
         ("coolant_price_per_liter", "REAL DEFAULT 0"),
         ("coolant_service_count", "REAL DEFAULT 0"),
@@ -2009,6 +2010,7 @@ def ensure_quote_fluid_columns():
         ("coolant_concentrate_percent", "REAL DEFAULT 100"),
         ("coolant_packaging_mode", "TEXT DEFAULT 'consumed'"),
         ("coolant_packaging_liters", "REAL DEFAULT 0"),
+        ("coolant_additional_discount_percent", "REAL DEFAULT 0"),
         ("fluid_total", "REAL DEFAULT 0"),
         ("replace_overview_fluids", "INTEGER DEFAULT 0"),
         ("replace_imported_oil", "INTEGER DEFAULT 0"),
@@ -2521,6 +2523,22 @@ def quote_inputs_page(quote_id: int, request: Request):
                     </label>
 
                     <label>
+                        Remise huile supplementaire (%)
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            name="oil_additional_discount_percent"
+                            value="{fmt_number(quote['oil_additional_discount_percent'])}"
+                            {oil_readonly}
+                        >
+                        <small class="muted">
+                            Appliquee apres la remise client du code DC.
+                        </small>
+                    </label>
+
+                    <label>
                         Nb services huile
                         <input
                             type="number"
@@ -2619,6 +2637,22 @@ def quote_inputs_page(quote_id: int, request: Request):
                             value="{fmt_number(quote['coolant_price_per_liter'])}"
                             {coolant_readonly}
                         >
+                    </label>
+
+                    <label>
+                        Remise coolant supplementaire (%)
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            name="coolant_additional_discount_percent"
+                            value="{fmt_number(quote['coolant_additional_discount_percent'])}"
+                            {coolant_readonly}
+                        >
+                        <small class="muted">
+                            Appliquee apres la remise client du code DC.
+                        </small>
                     </label>
 
                     <label>
@@ -2745,6 +2779,7 @@ def save_quote_inputs(
     oil_quantity_per_service: float = Form(0),
     oil_packaging_mode: str = Form('consumed'),
     oil_packaging_liters: float = Form(0),
+    oil_additional_discount_percent: float = Form(0),
     coolant_catalog_part_no: str = Form(""),
     coolant_price_per_liter: float = Form(0),
     coolant_service_count: float = Form(0),
@@ -2752,6 +2787,7 @@ def save_quote_inputs(
     coolant_concentrate_percent: float = Form(100),
     coolant_packaging_mode: str = Form('consumed'),
     coolant_packaging_liters: float = Form(0),
+    coolant_additional_discount_percent: float = Form(0),
     replace_overview_fluids: str | None = Form(None),
     replace_imported_oil: str | None = Form(None),
     replace_imported_coolant: str | None = Form(None),
@@ -2831,11 +2867,13 @@ def save_quote_inputs(
                 oil_price_per_liter=?, oil_service_count=?, oil_quantity_per_service=?,
                 oil_packaging_mode=?,
                 oil_packaging_liters=?,
+                oil_additional_discount_percent=?,
                 coolant_catalog_part_no=?,
                 coolant_price_per_liter=?, coolant_service_count=?, coolant_quantity_per_service=?,
                 coolant_concentrate_percent=?,
                 coolant_packaging_mode=?,
                 coolant_packaging_liters=?,
+                coolant_additional_discount_percent=?,
                 fluid_total=?,
                 replace_overview_fluids=?,
                 replace_imported_oil=?,
@@ -2862,11 +2900,13 @@ def save_quote_inputs(
              oil_price_per_liter, oil_service_count, oil_quantity_per_service,
              oil_packaging_mode.strip() or 'consumed',
              oil_packaging_liters,
+             max(0, min(100, oil_additional_discount_percent or 0)),
              coolant_catalog_part_no.strip() or None,
              coolant_price_per_liter, coolant_service_count, coolant_quantity_per_service,
              coolant_concentrate_percent,
              coolant_packaging_mode.strip() or 'consumed',
              coolant_packaging_liters,
+             max(0, min(100, coolant_additional_discount_percent or 0)),
              fluid_total,
              1 if replace_overview_fluids else 0,
              1 if replace_imported_oil else 0,

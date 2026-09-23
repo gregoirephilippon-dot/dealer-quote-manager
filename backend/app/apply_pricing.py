@@ -241,6 +241,7 @@ def ensure_quote_fluid_columns(conn):
         ("oil_quantity_per_service", "REAL DEFAULT 0"),
         ("oil_packaging_mode", "TEXT DEFAULT 'consumed'"),
         ("oil_packaging_liters", "REAL DEFAULT 0"),
+        ("oil_additional_discount_percent", "REAL DEFAULT 0"),
         ("coolant_catalog_part_no", "TEXT"),
         ("coolant_price_per_liter", "REAL DEFAULT 0"),
         ("coolant_service_count", "REAL DEFAULT 0"),
@@ -248,6 +249,7 @@ def ensure_quote_fluid_columns(conn):
         ("coolant_concentrate_percent", "REAL DEFAULT 100"),
         ("coolant_packaging_mode", "TEXT DEFAULT 'consumed'"),
         ("coolant_packaging_liters", "REAL DEFAULT 0"),
+        ("coolant_additional_discount_percent", "REAL DEFAULT 0"),
         ("fluid_total", "REAL DEFAULT 0"),
         ("replace_overview_fluids", "INTEGER DEFAULT 0"),
         ("replace_imported_oil", "INTEGER DEFAULT 0"),
@@ -484,6 +486,7 @@ def apply_pricing(quote_id: int):
                 oil_quantity_per_service,
                 oil_packaging_mode,
                 oil_packaging_liters,
+                oil_additional_discount_percent,
                 coolant_catalog_part_no,
                 coolant_price_per_liter,
                 coolant_service_count,
@@ -491,6 +494,7 @@ def apply_pricing(quote_id: int):
                 coolant_concentrate_percent,
                 coolant_packaging_mode,
                 coolant_packaging_liters,
+                coolant_additional_discount_percent,
                 fluid_total,
                 replace_overview_fluids,
                 replace_imported_oil,
@@ -620,6 +624,34 @@ def apply_pricing(quote_id: int):
             coolant_calculated_total,
         )
 
+        oil_additional_discount_percent = max(
+            0,
+            min(
+                100,
+                to_float(
+                    quote_value(
+                        quote,
+                        "oil_additional_discount_percent",
+                        0,
+                    )
+                ),
+            ),
+        )
+
+        coolant_additional_discount_percent = max(
+            0,
+            min(
+                100,
+                to_float(
+                    quote_value(
+                        quote,
+                        "coolant_additional_discount_percent",
+                        0,
+                    )
+                ),
+            ),
+        )
+
         oil_dealer_total = (
             oil_catalog_pricing["dealer_total"]
             if oil_software_active
@@ -634,12 +666,14 @@ def apply_pricing(quote_id: int):
 
         oil_total = (
             oil_catalog_pricing["customer_total"]
+            * (1 - oil_additional_discount_percent / 100)
             if oil_software_active
             else 0
         )
 
         coolant_total = (
             coolant_catalog_pricing["customer_total"]
+            * (1 - coolant_additional_discount_percent / 100)
             if coolant_software_active
             else 0
         )
@@ -1053,6 +1087,8 @@ def apply_pricing(quote_id: int):
                     "dealer_discount_percent": oil_catalog_pricing["dealer_discount"] * 100,
                     "dealer_total": oil_dealer_total,
                     "customer_discount_percent": oil_catalog_pricing["customer_discount"] * 100,
+                    "additional_customer_discount_percent": oil_additional_discount_percent,
+                    "customer_total_before_additional_discount": oil_catalog_pricing["customer_total"] if oil_software_active else 0,
                     "active_total": oil_total,
                     "imported_present": imported_oil_present,
                     "replace_imported": replace_imported_oil,
@@ -1073,6 +1109,8 @@ def apply_pricing(quote_id: int):
                     "dealer_discount_percent": coolant_catalog_pricing["dealer_discount"] * 100,
                     "dealer_total": coolant_dealer_total,
                     "customer_discount_percent": coolant_catalog_pricing["customer_discount"] * 100,
+                    "additional_customer_discount_percent": coolant_additional_discount_percent,
+                    "customer_total_before_additional_discount": coolant_catalog_pricing["customer_total"] if coolant_software_active else 0,
                     "active_total": coolant_total,
                     "imported_present": imported_coolant_present,
                     "replace_imported": replace_imported_coolant,
@@ -1145,9 +1183,11 @@ def apply_pricing(quote_id: int):
     print(f"Huile catalogue : {oil_calculated_total:.2f} {currency}")
     print(f"Huile cout dealer : {oil_dealer_total:.2f} {currency}")
     print(f"Huile prix client actif : {oil_total:.2f} {currency}")
+    print(f"Huile remise supplementaire : {oil_additional_discount_percent:.2f}%")
     print(f"Coolant catalogue : {coolant_calculated_total:.2f} {currency}")
     print(f"Coolant cout dealer : {coolant_dealer_total:.2f} {currency}")
     print(f"Coolant prix client actif : {coolant_total:.2f} {currency}")
+    print(f"Coolant remise supplementaire : {coolant_additional_discount_percent:.2f}%")
     print(f"Total fluides cout dealer : {fluid_dealer_total:.2f} {currency}")
     print(f"Total fluides prix client : {fluid_total:.2f} {currency}")
     print(f"Service fluides : {fluid_service_id or 'aucun'}")

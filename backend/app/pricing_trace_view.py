@@ -51,6 +51,8 @@ def get_pricing_result_html(quote):
     labour = trace.get("labour", {})
     services = trace.get("services", {})
     fluids = trace.get("fluids", {})
+    oil_fluid = fluids.get("oil", {})
+    coolant_fluid = fluids.get("coolant", {})
     fees = trace.get("fees", {})
     result = trace.get("result", {})
     indexation = trace.get("indexation", [])
@@ -153,6 +155,22 @@ def get_pricing_result_html(quote):
             <div><strong>Main-d'oeuvre apres indexation</strong><br>{_money(labour.get('indexed_customer_total'), currency)}</div>
             <div><strong>Services additionnels ajoutes</strong><br>{_money(services.get('total_added'), currency)}</div>
             <div><strong>Huile + coolant</strong><br>{_money(fluids.get('total'), currency)}</div>
+            <div>
+                <strong>Huile</strong><br>
+                {_money(oil_fluid.get('active_total'), currency)}<br>
+                <span class="muted">
+                    Remise DC client : {_percent(oil_fluid.get('customer_discount_percent'))}
+                    | Remise supplementaire : {_percent(oil_fluid.get('additional_customer_discount_percent'))}
+                </span>
+            </div>
+            <div>
+                <strong>Coolant</strong><br>
+                {_money(coolant_fluid.get('active_total'), currency)}<br>
+                <span class="muted">
+                    Remise DC client : {_percent(coolant_fluid.get('customer_discount_percent'))}
+                    | Remise supplementaire : {_percent(coolant_fluid.get('additional_customer_discount_percent'))}
+                </span>
+            </div>
             <div><strong>Logistique</strong><br>{_money(fees.get('logistics_amount'), currency)} ({_percent(fees.get('logistics_percent'))})</div>
             <div><strong>Administration</strong><br>{_money(fees.get('admin_amount'), currency)} ({_percent(fees.get('admin_percent'))})</div>
         </div>
