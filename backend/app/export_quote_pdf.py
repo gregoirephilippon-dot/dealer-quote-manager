@@ -29,6 +29,8 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parents[2]
 EXPORT_DIR = BASE_DIR / "data" / "exports"
 LOGO_DIR = BASE_DIR / "storage" / "logos"
+CONTRACT_ASSET_DIR = Path(__file__).resolve().parent / "contract_assets"
+CGV_BANNER_PATH = CONTRACT_ASSET_DIR / "CGV.jpg"
 
 
 def get_company_branding(quote):
@@ -524,7 +526,37 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             ]
         )
     )
+
     story.append(signature_table)
+    story.append(Spacer(1, 14))
+
+    if not CGV_BANNER_PATH.exists():
+        raise FileNotFoundError(
+            f"Bandeau CGV introuvable : {CGV_BANNER_PATH}"
+        )
+
+    cgv_banner = Image(str(CGV_BANNER_PATH))
+    cgv_banner._restrictSize(125 * mm, 25 * mm)
+
+    banner_table = Table(
+        [[cgv_banner]],
+        colWidths=[125 * mm],
+    )
+
+    banner_table.setStyle(
+        TableStyle(
+            [
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    story.append(banner_table)
 
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
 
