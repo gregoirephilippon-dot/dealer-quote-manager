@@ -429,13 +429,28 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     )
 
     story.append(Paragraph("Cadre du contrat", styles["Section"]))
+    contract_info_rows = [
+        ["Type de contrat", "Maintenance pieces et service", "Document", "Offre client"],
+    ]
+
+    extra_warranty_enabled = (
+        bool(quote["extra_warranty_enabled"])
+        if "extra_warranty_enabled" in quote.keys()
+        else False
+    )
+
+    if extra_warranty_enabled:
+        contract_info_rows.append(
+            ["Garantie supplementaire", "1 an", "Limite fonctionnement", "3000 heures moteur"]
+        )
+
+    contract_info_rows.append(
+        ["Perimetre", "Selon services inclus ci-dessous", "Validation", "Sous reserve technique"]
+    )
+
     add_kv_table(
         story,
-        [
-            ["Type de contrat", "Maintenance pieces et service", "Document", "Offre client"],
-            ["Garantie supplementaire", "1 an", "Limite fonctionnement", "3000 heures moteur"],
-            ["Perimetre", "Selon services inclus ci-dessous", "Validation", "Sous reserve technique"],
-        ],
+        contract_info_rows,
     )
 
     if services:

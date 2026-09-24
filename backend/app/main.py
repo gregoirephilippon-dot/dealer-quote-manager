@@ -2027,6 +2027,7 @@ def ensure_quote_fluid_columns():
         ("travel_time_one_way_hours", "REAL DEFAULT 0"),
         ("travel_round_trips_per_intervention", "REAL DEFAULT 1"),
         ("equipment_moved", "INTEGER DEFAULT 0"),
+        ("extra_warranty_enabled", "INTEGER DEFAULT 0"),
     ]
 
     with get_connection() as conn:
@@ -2451,6 +2452,16 @@ def quote_inputs_page(quote_id: int, request: Request):
                 </select>
             </label>
 
+            <label style="grid-column:1 / -1;">
+                <input
+                    type="checkbox"
+                    name="extra_warranty_enabled"
+                    value="1"
+                    {"checked" if quote["extra_warranty_enabled"] else ""}
+                >
+                Garantie suppl&eacute;mentaire 1 an / limite 3000 heures moteur
+            </label>
+
             <input
                 type="hidden"
                 name="replace_overview_fluids"
@@ -2773,6 +2784,7 @@ def save_quote_inputs(
     travel_time_one_way_hours: float = Form(0),
     travel_round_trips_per_intervention: float = Form(1),
     equipment_moved: int = Form(0),
+    extra_warranty_enabled: str | None = Form(None),
     oil_catalog_part_no: str = Form(""),
     oil_price_per_liter: float = Form(0),
     oil_service_count: float = Form(0),
@@ -2863,6 +2875,7 @@ def save_quote_inputs(
                 travel_time_one_way_hours=?,
                 travel_round_trips_per_intervention=?,
                 equipment_moved=?,
+                extra_warranty_enabled=?,
                 oil_catalog_part_no=?,
                 oil_price_per_liter=?, oil_service_count=?, oil_quantity_per_service=?,
                 oil_packaging_mode=?,
@@ -2896,6 +2909,7 @@ def save_quote_inputs(
              max(0, travel_time_one_way_hours or 0),
              max(0, travel_round_trips_per_intervention or 0),
              1 if equipment_moved else 0,
+             1 if extra_warranty_enabled else 0,
              oil_catalog_part_no.strip() or None,
              oil_price_per_liter, oil_service_count, oil_quantity_per_service,
              oil_packaging_mode.strip() or 'consumed',
