@@ -6415,6 +6415,23 @@ def create_contract_page(quote_id: int, request: Request):
     total_hours = float(quote["total_hours"] or 0)
     hours_per_year = float(quote["hours_per_year"] or 0)
 
+    imported_start_engine_hours = (
+        total_hours
+        if quote["import_id"] is not None
+        else 0.0
+    )
+
+    imported_start_readonly = (
+        "readonly"
+        if quote["import_id"] is not None
+        else ""
+    )
+
+    planned_end_engine_hours = (
+        imported_start_engine_hours
+        + total_hours
+    )
+
     planned_end_date = ""
 
     if total_hours > 0 and hours_per_year > 0:
@@ -6530,7 +6547,8 @@ def create_contract_page(quote_id: int, request: Request):
                     step="0.1"
                     min="0"
                     name="start_engine_hours"
-                    value="0"
+                    value="{imported_start_engine_hours:g}"
+                    {imported_start_readonly}
                     required
                     oninput="updateContractPreview()"
                 >
@@ -6544,7 +6562,8 @@ def create_contract_page(quote_id: int, request: Request):
                     step="0.1"
                     min="0"
                     name="planned_end_engine_hours"
-                    value="{total_hours:g}"
+                    value="{planned_end_engine_hours:g}"
+                    readonly
                     required
                 >
                 <small class="muted">
@@ -6613,19 +6632,10 @@ def create_contract_page(quote_id: int, request: Request):
     </form>
 
     <script>
-    let endHoursEdited = false;
-
     const endHoursField =
         document.getElementById(
             "planned_end_engine_hours"
         );
-
-    endHoursField.addEventListener(
-        "input",
-        function() {{
-            endHoursEdited = true;
-        }}
-    );
 
     function updateContractPreview() {{
         const startHours =
@@ -6642,10 +6652,8 @@ def create_contract_page(quote_id: int, request: Request):
                 ).value
             ) || 0;
 
-        if (!endHoursEdited) {{
-            endHoursField.value =
-                (startHours + contractHours).toFixed(1);
-        }}
+        endHoursField.value =
+            (startHours + contractHours).toFixed(1);
 
         const startDateValue =
             document.getElementById(
@@ -6762,10 +6770,16 @@ def create_contract_submit(
         start_date_obj = date.today()
         start_date = start_date_obj.isoformat()
 
-    start_engine_hours = max(
-        0.0,
-        float(start_engine_hours or 0),
-    )
+    if quote["import_id"] is not None:
+        start_engine_hours = max(
+            0.0,
+            float(quote["total_hours"] or 0),
+        )
+    else:
+        start_engine_hours = max(
+            0.0,
+            float(start_engine_hours or 0),
+        )
 
     contract_hours = max(
         0.0,
@@ -6781,17 +6795,9 @@ def create_contract_submit(
         start_engine_hours + contract_hours
     )
 
-    planned_end_engine_hours = float(
-        planned_end_engine_hours or 0
+    planned_end_engine_hours = (
+        proposed_end_hours
     )
-
-    if (
-        planned_end_engine_hours
-        <= start_engine_hours
-    ):
-        planned_end_engine_hours = (
-            proposed_end_hours
-        )
 
     planned_end_date = None
 

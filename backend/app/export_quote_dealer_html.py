@@ -285,12 +285,48 @@ def render_quote_html(quote, lines, interventions):
     status = escape(str(quote["status"] or ""))
     created_at = escape(str(quote["created_at"] or ""))
 
+    quote_is_imported = quote["import_id"] is not None
+    quote_total_hours = float(quote["total_hours"] or 0)
+    quote_start_engine_hours = (
+        quote_total_hours if quote_is_imported else 0.0
+    )
+    quote_end_engine_hours = (
+        quote_start_engine_hours + quote_total_hours
+    )
+
+    quote_hours_summary_html = f"""
+            <div class="card">
+                <div class="label">Heures contrat</div>
+                <div class="value">{number(quote["total_hours"], " h")}</div>
+            </div>
+    """
+
+    if quote_is_imported:
+        quote_hours_summary_html = f"""
+            <div class="card">
+                <div class="label">Compteur debut</div>
+                <div class="value">{number(quote_start_engine_hours, " h")}</div>
+            </div>
+            <div class="card">
+                <div class="label">Compteur fin</div>
+                <div class="value">{number(quote_end_engine_hours, " h")}</div>
+            </div>
+        """
+
     intervention_rows = ""
     for intervention in interventions:
         intervention_rows += f"""
         <tr>
             <td>{escape(str(intervention["intervention_date"] or ""))}</td>
-            <td>{number(intervention["engine_hours"], " h")}</td>
+            <td>{number(
+                (
+                    quote_start_engine_hours
+                    + float(intervention["engine_hours"] or 0)
+                )
+                if quote_is_imported
+                else intervention["engine_hours"],
+                " h",
+            )}</td>
             <td>{money(intervention["parts_cost"], currency)}</td>
             <td>{money(intervention["labour_cost"], currency)}</td>
             <td>{money(intervention["misc_cost"], currency)}</td>
@@ -552,10 +588,7 @@ def render_quote_html(quote, lines, interventions):
                 <div class="label">Total huile + coolant</div>
                 <div class="value">{money(row_value(quote, "fluid_total", 0), currency)}</div>
             </div>
-            <div class="card">
-                <div class="label">Heures contrat</div>
-                <div class="value">{number(quote["total_hours"], " h")}</div>
-            </div>
+            {quote_hours_summary_html}
         </div>
 
         <h2>Planning des interventions</h2>

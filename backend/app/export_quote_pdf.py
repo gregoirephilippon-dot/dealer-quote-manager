@@ -310,6 +310,14 @@ def build_company_identity_block(quote):
 
 def build_pdf(quote, lines, interventions, settings, services, output_path: Path):
     currency = quote["currency"] or "EUR"
+    quote_is_imported = quote["import_id"] is not None
+    quote_total_hours = float(quote["total_hours"] or 0)
+    quote_start_engine_hours = (
+        quote_total_hours if quote_is_imported else 0.0
+    )
+    quote_end_engine_hours = (
+        quote_start_engine_hours + quote_total_hours
+    )
 
     doc = SimpleDocTemplate(
         str(output_path),
@@ -407,8 +415,27 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         [
             ["Designation", quote["product_designation"] or "-", "Numero de serie", quote["engine_serial_number"] or "-"],
             ["Produit", quote["product_name"] or "-", "Pays", quote["country"] or "-"],
-            ["Devise", currency, "Heures contrat", number(quote["total_hours"], " h")],
-            ["Heures par an", number(quote["hours_per_year"], " h"), "", ""],
+            [
+                "Devise",
+                currency,
+                "Compteur debut" if quote_is_imported else "Heures contrat",
+                number(
+                    quote_start_engine_hours
+                    if quote_is_imported
+                    else quote["total_hours"],
+                    " h",
+                ),
+            ],
+            [
+                "Heures par an",
+                number(quote["hours_per_year"], " h"),
+                "Compteur fin" if quote_is_imported else "",
+                (
+                    number(quote_end_engine_hours, " h")
+                    if quote_is_imported
+                    else ""
+                ),
+            ],
         ],
     )
 
@@ -424,7 +451,21 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         [
             ["Prix total contrat", money(selling_total, currency), "Prix mensuel", money(quote["selling_monthly"], currency)],
             ["Prix horaire", money(selling_per_hour, currency) + "/h" if selling_per_hour is not None else "-", "Services inclus", str(len(services))],
-            ["Heures contrat", number(total_hours, " h"), "Devise", currency],
+            [
+                "Compteur debut" if quote_is_imported else "Heures contrat",
+                number(
+                    quote_start_engine_hours
+                    if quote_is_imported
+                    else total_hours,
+                    " h",
+                ),
+                "Compteur fin" if quote_is_imported else "Devise",
+                (
+                    number(quote_end_engine_hours, " h")
+                    if quote_is_imported
+                    else currency
+                ),
+            ],
         ],
     )
 
@@ -492,7 +533,15 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         intervention_data.append(
             [
                 intervention["intervention_date"] or "",
-                number(intervention["engine_hours"], " h"),
+                number(
+                    (
+                        quote_start_engine_hours
+                        + float(intervention["engine_hours"] or 0)
+                    )
+                    if quote_is_imported
+                    else intervention["engine_hours"],
+                    " h",
+                ),
             ]
         )
 
