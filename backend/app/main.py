@@ -6415,21 +6415,18 @@ def create_contract_page(quote_id: int, request: Request):
     total_hours = float(quote["total_hours"] or 0)
     hours_per_year = float(quote["hours_per_year"] or 0)
 
-    imported_start_engine_hours = (
-        total_hours
-        if quote["import_id"] is not None
-        else 0.0
+    imported_quote = quote["import_id"] is not None
+
+    start_engine_hours_value = (
+        ""
+        if imported_quote
+        else "0"
     )
 
-    imported_start_readonly = (
-        "readonly"
-        if quote["import_id"] is not None
-        else ""
-    )
-
-    planned_end_engine_hours = (
-        imported_start_engine_hours
-        + total_hours
+    planned_end_engine_hours_value = (
+        ""
+        if imported_quote
+        else f"{total_hours:g}"
     )
 
     planned_end_date = ""
@@ -6547,8 +6544,8 @@ def create_contract_page(quote_id: int, request: Request):
                     step="0.1"
                     min="0"
                     name="start_engine_hours"
-                    value="{imported_start_engine_hours:g}"
-                    {imported_start_readonly}
+                    value="{start_engine_hours_value}"
+                    placeholder="Saisir le compteur reel"
                     required
                     oninput="updateContractPreview()"
                 >
@@ -6562,7 +6559,7 @@ def create_contract_page(quote_id: int, request: Request):
                     step="0.1"
                     min="0"
                     name="planned_end_engine_hours"
-                    value="{planned_end_engine_hours:g}"
+                    value="{planned_end_engine_hours_value}"
                     readonly
                     required
                 >
@@ -6638,12 +6635,13 @@ def create_contract_page(quote_id: int, request: Request):
         );
 
     function updateContractPreview() {{
+        const startHoursValue =
+            document.getElementById(
+                "start_engine_hours"
+            ).value.trim();
+
         const startHours =
-            parseFloat(
-                document.getElementById(
-                    "start_engine_hours"
-                ).value
-            ) || 0;
+            parseFloat(startHoursValue);
 
         const contractHours =
             parseFloat(
@@ -6653,7 +6651,9 @@ def create_contract_page(quote_id: int, request: Request):
             ) || 0;
 
         endHoursField.value =
-            (startHours + contractHours).toFixed(1);
+            Number.isFinite(startHours)
+            ? (startHours + contractHours).toFixed(1)
+            : "";
 
         const startDateValue =
             document.getElementById(
@@ -6770,16 +6770,10 @@ def create_contract_submit(
         start_date_obj = date.today()
         start_date = start_date_obj.isoformat()
 
-    if quote["import_id"] is not None:
-        start_engine_hours = max(
-            0.0,
-            float(quote["total_hours"] or 0),
-        )
-    else:
-        start_engine_hours = max(
-            0.0,
-            float(start_engine_hours or 0),
-        )
+    start_engine_hours = max(
+        0.0,
+        float(start_engine_hours or 0),
+    )
 
     contract_hours = max(
         0.0,
@@ -6972,6 +6966,87 @@ def create_contract_submit(
 
             parts_by_component[component].append(part)
 
+        # Exact maintenance components from the original import.
+        # Service Calculator stores the real A/B/C/D/E/F composition
+        # for each engine-hour milestone in intervention_details.
+        components_by_engine_hours = {}
+        component_occurrence_counts = {}
+
+        if quote["import_id"] is not None:
+            try:
+                import json as _contract_json
+
+                import_row = conn.execute(
+                    """
+                    SELECT raw_json
+                    FROM imports
+                    WHERE id = ?
+                    """,
+                    (quote["import_id"],),
+                ).fetchone()
+
+                if import_row and import_row["raw_json"]:
+                    raw_import = _contract_json.loads(
+                        import_row["raw_json"]
+                    )
+
+                    for detail in raw_import.get(
+                        "intervention_details",
+                        [],
+                    ):
+                        try:
+                            detail_hours = round(
+                                float(
+                                    detail.get(
+                                        "engine_hours",
+                                        0,
+                                    )
+                                    or 0
+                                ),
+                                3,
+                            )
+                        except (TypeError, ValueError):
+                            continue
+
+                        detail_components = []
+                        seen_components = set()
+
+                        for line in detail.get("lines", []) or []:
+                            component = str(
+                                line.get("group") or ""
+                            ).strip()
+
+                            if (
+                                component
+                                in {"A", "B", "C", "D", "E", "F"}
+                                and component
+                                not in seen_components
+                            ):
+                                seen_components.add(component)
+                                detail_components.append(component)
+
+                        if detail_components:
+                            components_by_engine_hours[
+                                detail_hours
+                            ] = detail_components
+
+                            for component in detail_components:
+                                component_occurrence_counts[
+                                    component
+                                ] = (
+                                    component_occurrence_counts.get(
+                                        component,
+                                        0,
+                                    )
+                                    + 1
+                                )
+
+            except Exception:
+                # Legacy imports remain supported by the
+                # historical engine-hour fallback below.
+                components_by_engine_hours = {}
+                component_occurrence_counts = {}
+
         def components_for_relative_hours(relative_hours):
             value = float(relative_hours or 0)
 
@@ -6997,21 +7072,24 @@ def create_contract_submit(
 
         for imported in imported_interventions:
 
-            relative_hours = float(
+            planned_hours = float(
                 imported["engine_hours"] or 0
             )
 
-            # Ignore imported maintenance milestones that
-            # fall outside the signed contract coverage.
+            # Service Calculator supplies absolute
+            # engine-meter maintenance milestones.
+            if planned_hours < start_engine_hours:
+                continue
+
             if (
-                contract_hours > 0
-                and relative_hours > contract_hours
+                planned_end_engine_hours > start_engine_hours
+                and planned_hours > planned_end_engine_hours
             ):
                 continue
 
-            absolute_hours = (
-                start_engine_hours
-                + relative_hours
+            hours_from_start = max(
+                0.0,
+                planned_hours - start_engine_hours,
             )
 
             # Planned dates belong to the actual contract,
@@ -7022,13 +7100,13 @@ def create_contract_submit(
 
             if (
                 hours_per_year > 0
-                and relative_hours >= 0
+                and hours_from_start >= 0
             ):
                 intervention_date = (
                     start_date_obj
                     + timedelta(
                         days=(
-                            relative_hours
+                            hours_from_start
                             / hours_per_year
                             * 365.25
                         )
@@ -7036,7 +7114,7 @@ def create_contract_submit(
                 ).isoformat()
 
             intervention_type = (
-                f"Maintenance {relative_hours:g} h"
+                f"Maintenance {planned_hours:g} h"
             )
 
             cursor_intervention = conn.execute(
@@ -7055,13 +7133,13 @@ def create_contract_submit(
                 (
                     contract_id,
                     intervention_type,
-                    absolute_hours,
-                    absolute_hours,
+                    planned_hours,
+                    planned_hours,
                     intervention_date,
                     "planned",
                     (
                         "Generated from quote intervention "
-                        f"{relative_hours:g} h"
+                        f"{planned_hours:g} h"
                     ),
                 ),
             )
@@ -7070,9 +7148,14 @@ def create_contract_submit(
                 cursor_intervention.lastrowid
             )
 
-            components = components_for_relative_hours(
-                relative_hours
+            components = components_by_engine_hours.get(
+                round(planned_hours, 3)
             )
+
+            if components is None:
+                components = components_for_relative_hours(
+                    planned_hours
+                )
 
             for component in components:
                 for part in parts_by_component.get(
@@ -7086,15 +7169,27 @@ def create_contract_submit(
                     # Imported quantities are totals across all
                     # occurrences of the component.
                     #
-                    # A/C occur 19 times.
-                    # B/D occur 4 times.
-                    # E/F occur once.
-                    divisor = 1.0
+                    # For current Service Calculator imports, use
+                    # the real occurrence count from
+                    # intervention_details.
+                    #
+                    # Historical divisors remain only as fallback
+                    # for older imports without intervention details.
+                    divisor = float(
+                        component_occurrence_counts.get(
+                            component,
+                            0,
+                        )
+                        or 0
+                    )
 
-                    if component in ("A", "C"):
-                        divisor = 19.0
-                    elif component in ("B", "D"):
-                        divisor = 4.0
+                    if divisor <= 0:
+                        divisor = 1.0
+
+                        if component in ("A", "C"):
+                            divisor = 19.0
+                        elif component in ("B", "D"):
+                            divisor = 4.0
 
                     planned_quantity = (
                         total_quantity / divisor

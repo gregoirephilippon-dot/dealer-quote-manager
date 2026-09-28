@@ -384,14 +384,6 @@ def build_company_identity_block(quote):
 
 def build_pdf(quote, lines, interventions, settings, services, output_path: Path):
     currency = quote["currency"] or "EUR"
-    quote_is_imported = quote["import_id"] is not None
-    quote_total_hours = float(quote["total_hours"] or 0)
-    quote_start_engine_hours = (
-        quote_total_hours if quote_is_imported else 0.0
-    )
-    quote_end_engine_hours = (
-        quote_start_engine_hours + quote_total_hours
-    )
     parts_dc = build_parts_dc_analysis(lines)
 
     doc = SimpleDocTemplate(
@@ -480,44 +472,8 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             ["Client", quote["customer_name"] or "-", "Designation", quote["product_designation"] or "-"],
             ["Numero de serie", quote["engine_serial_number"] or "-", "Produit", quote["product_name"] or "-"],
             ["Pays", quote["country"] or "-", "Devise", currency],
-            [
-                "Compteur debut" if quote_is_imported else "Heures contrat",
-                number(
-                    quote_start_engine_hours
-                    if quote_is_imported
-                    else quote["total_hours"],
-                    " h",
-                ),
-                "Compteur fin" if quote_is_imported else "Heures par an",
-                (
-                    number(quote_end_engine_hours, " h")
-                    if quote_is_imported
-                    else number(quote["hours_per_year"], " h")
-                ),
-            ],
-            [
-                "Heures par an" if quote_is_imported else "Taux horaire input",
-                (
-                    number(quote["hours_per_year"], " h")
-                    if quote_is_imported
-                    else (
-                        money(quote["labour_rate"], currency) + "/h"
-                        if quote["labour_rate"] is not None
-                        else "-"
-                    )
-                ),
-                "Taux horaire input" if quote_is_imported else "",
-                (
-                    money(quote["labour_rate"], currency) + "/h"
-                    if quote_is_imported
-                    and quote["labour_rate"] is not None
-                    else (
-                        "-"
-                        if quote_is_imported
-                        else ""
-                    )
-                ),
-            ],
+            ["Heures contrat", number(quote["total_hours"], " h"), "Heures par an", number(quote["hours_per_year"], " h")],
+            ["Taux horaire input", money(quote["labour_rate"], currency) + "/h" if quote["labour_rate"] is not None else "-", "", ""],
         ],
     )
 
@@ -605,15 +561,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         intervention_data.append(
             [
                 intervention["intervention_date"] or "",
-                number(
-                    (
-                        quote_start_engine_hours
-                        + float(intervention["engine_hours"] or 0)
-                    )
-                    if quote_is_imported
-                    else intervention["engine_hours"],
-                    " h",
-                ),
+                number(intervention["engine_hours"], " h"),
                 money(intervention["parts_cost"], currency),
                 money(intervention["labour_cost"], currency),
                 money(intervention["misc_cost"], currency),

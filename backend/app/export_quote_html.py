@@ -222,48 +222,12 @@ def render_quote_html(quote, lines, interventions):
     if selling_per_hour is None and total_hours:
         selling_per_hour = selling_total / total_hours
 
-    quote_is_imported = quote["import_id"] is not None
-    quote_total_hours = float(quote["total_hours"] or 0)
-    quote_start_engine_hours = (
-        quote_total_hours if quote_is_imported else 0.0
-    )
-    quote_end_engine_hours = (
-        quote_start_engine_hours + quote_total_hours
-    )
-
-    quote_hours_summary_html = f"""
-            <div class="card">
-                <div class="label">Heures contrat</div>
-                <div class="value">{number(total_hours, " h")}</div>
-            </div>
-    """
-
-    if quote_is_imported:
-        quote_hours_summary_html = f"""
-            <div class="card">
-                <div class="label">Compteur debut</div>
-                <div class="value">{number(quote_start_engine_hours, " h")}</div>
-            </div>
-            <div class="card">
-                <div class="label">Compteur fin</div>
-                <div class="value">{number(quote_end_engine_hours, " h")}</div>
-            </div>
-        """
-
     intervention_rows = ""
     for intervention in interventions:
         intervention_rows += f"""
         <tr>
             <td>{escape(str(intervention["intervention_date"] or ""))}</td>
-            <td>{number(
-                (
-                    quote_start_engine_hours
-                    + float(intervention["engine_hours"] or 0)
-                )
-                if quote_is_imported
-                else intervention["engine_hours"],
-                " h",
-            )}</td>
+            <td>{number(intervention["engine_hours"], " h")}</td>
         </tr>
         """
 
@@ -504,7 +468,10 @@ def render_quote_html(quote, lines, interventions):
                 <div class="label">Prix horaire</div>
                 <div class="value">{money(selling_per_hour, currency)}/h</div>
             </div>
-            {quote_hours_summary_html}
+            <div class="card">
+                <div class="label">Heures contrat</div>
+                <div class="value">{number(total_hours, " h")}</div>
+            </div>
         </div>
 
         <h2>Planning des interventions</h2>
