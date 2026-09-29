@@ -58,6 +58,7 @@ def init_db():
 
                 currency TEXT,
                 total_hours REAL,
+                current_engine_hours REAL,
                 hours_per_year REAL,
                 labour_rate REAL,
                 source_labour_rate REAL,
@@ -433,6 +434,14 @@ def init_db():
                 "PRAGMA table_info(quotes)"
             ).fetchall()
         }
+
+        if "current_engine_hours" not in quote_columns:
+            conn.execute(
+                """
+                ALTER TABLE quotes
+                ADD COLUMN current_engine_hours REAL
+                """
+            )
 
         if "source_labour_rate" not in quote_columns:
             conn.execute(

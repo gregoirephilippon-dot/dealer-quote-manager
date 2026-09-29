@@ -2125,6 +2125,68 @@ def quote_inputs_page(quote_id: int, request: Request):
         import_control_html = get_import_control_html(conn, quote)
         pricing_result_html = get_pricing_result_html(quote)
 
+        # ----------------------------------------------------
+        # Planning maintenance issu du fichier Excel importe.
+        #
+        # Les valeurs Excel restent intactes.
+        # On calcule seulement la position de chaque maintenance
+        # dans la duree totale du programme afin de pouvoir
+        # l'afficher face au compteur moteur reel de la machine.
+        # ----------------------------------------------------
+        maintenance_source_rows = []
+        maintenance_total_hours = 0.0
+
+        if quote["import_id"] is not None:
+            try:
+                import json as _quote_schedule_json
+
+                import_schedule_row = conn.execute(
+                    """
+                    SELECT raw_json
+                    FROM imports
+                    WHERE id = ?
+                    """,
+                    (quote["import_id"],),
+                ).fetchone()
+
+                if (
+                    import_schedule_row
+                    and import_schedule_row["raw_json"]
+                ):
+                    raw_schedule = _quote_schedule_json.loads(
+                        import_schedule_row["raw_json"]
+                    )
+
+                    calculation_basis = (
+                        raw_schedule.get("calculation_basis")
+                        or {}
+                    )
+
+                    maintenance_total_hours = float(
+                        calculation_basis.get(
+                            "total_calculation_hours",
+                            0,
+                        )
+                        or 0
+                    )
+
+                maintenance_source_rows = conn.execute(
+                    """
+                    SELECT
+                        id,
+                        intervention_date,
+                        engine_hours
+                    FROM interventions
+                    WHERE quote_id = ?
+                    ORDER BY engine_hours, intervention_date, id
+                    """,
+                    (quote_id,),
+                ).fetchall()
+
+            except Exception:
+                maintenance_source_rows = []
+                maintenance_total_hours = 0.0
+
         imported_oil_row = conn.execute(
             """
             SELECT id, quantity, description, part_number
@@ -2376,9 +2438,156 @@ def quote_inputs_page(quote_id: int, request: Request):
     oil_catalog_options_html = "".join(oil_options)
     coolant_catalog_options_html = "".join(coolant_options)
 
+    displayed_total_hours = float(
+        quote["total_hours"] or 0
+    )
+    displayed_hours_per_year = float(
+        quote["hours_per_year"] or 0
+    )
+
+    if (
+        quote["import_id"] is not None
+        and maintenance_total_hours > 0
+    ):
+        displayed_total_hours = (
+            maintenance_total_hours
+        )
+
+        try:
+            calculation_basis = (
+                raw_schedule.get("calculation_basis")
+                or {}
+            )
+
+            source_hours_per_year = float(
+                calculation_basis.get(
+                    "op_hours_per_year",
+                    0,
+                )
+                or 0
+            )
+
+            if source_hours_per_year > 0:
+                displayed_hours_per_year = (
+                    source_hours_per_year
+                )
+        except Exception:
+            pass
+
     contract_years = ""
-    if quote["total_hours"] and quote["hours_per_year"]:
-        contract_years = quote["total_hours"] / quote["hours_per_year"]
+    if (
+        displayed_total_hours
+        and displayed_hours_per_year
+    ):
+        contract_years = (
+            displayed_total_hours
+            / displayed_hours_per_year
+        )
+
+    maintenance_schedule_html = ""
+
+    if maintenance_source_rows and maintenance_total_hours > 0:
+        source_hours_values = [
+            float(row["engine_hours"] or 0)
+            for row in maintenance_source_rows
+        ]
+
+        # Origine arithmetique du programme Excel.
+        # Ce n'est PAS un compteur moteur importe.
+        schedule_origin = (
+            max(source_hours_values)
+            - maintenance_total_hours
+        )
+
+        schedule_rows_html = []
+
+        for maintenance_row in maintenance_source_rows:
+            source_hours = float(
+                maintenance_row["engine_hours"] or 0
+            )
+
+            maintenance_offset = (
+                source_hours
+                - schedule_origin
+            )
+
+            if maintenance_offset < -0.01:
+                continue
+
+            if (
+                maintenance_offset
+                > maintenance_total_hours + 0.01
+            ):
+                continue
+
+            source_date = str(
+                maintenance_row["intervention_date"] or ""
+            )
+
+            current_meter_value = quote["current_engine_hours"]
+
+            if current_meter_value is None:
+                planned_meter = None
+            else:
+                planned_meter = (
+                    max(0.0, float(current_meter_value))
+                    + maintenance_offset
+                )
+
+            schedule_rows_html.append(
+                f"""
+                <tr>
+                    <td>{source_date or "-"}</td>
+                    <td>{fmt_number(source_hours)} h</td>
+                    <td>+{fmt_number(maintenance_offset)} h</td>
+                    <td
+                        class="maintenance-planned-meter"
+                        data-maintenance-offset="{maintenance_offset:g}"
+                    >
+                        {fmt_number(planned_meter) + " h" if planned_meter is not None else "-"}
+                    </td>
+                </tr>
+                """
+            )
+
+        if schedule_rows_html:
+            maintenance_schedule_html = f"""
+            <div
+                class="card"
+                style="
+                    grid-column:1 / -1;
+                    margin:18px 0 4px 0;
+                    padding:18px 20px;
+                "
+            >
+                <h3 style="margin-top:0;">
+                    Planning de maintenance issu du fichier Excel
+                </h3>
+
+                <p class="muted">
+                    Les maintenances, leur ordre et leur contenu
+                    proviennent du fichier importe.
+                    Le compteur prevu est uniquement recale sur le
+                    compteur moteur actuel saisi dans cette offre.
+                </p>
+
+                <div style="overflow-x:auto;">
+                    <table style="width:100%;">
+                        <thead>
+                            <tr>
+                                <th>Date Excel</th>
+                                <th>Palier Excel</th>
+                                <th>Ecart maintenance</th>
+                                <th>Compteur moteur prevu</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {"".join(schedule_rows_html)}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            """
 
     content = f"""
     <h2>Données contrat / moteur ID {quote_id}</h2>
@@ -2409,12 +2618,15 @@ def quote_inputs_page(quote_id: int, request: Request):
         <h3>Contrat & coûts importés</h3>
         <div class="card grid">
             <label>Duree contrat calculee<input type="number" step="0.01" value="{fmt_number(contract_years)}" disabled></label>
-            <label>Heures moteur contrat<input type="number" step="0.01" name="total_hours" value="{fmt_number(quote['total_hours'])}"></label>
-            <label>Heures moteur par an<input type="number" step="0.01" name="hours_per_year" value="{fmt_number(quote['hours_per_year'])}"></label>
+            <label>Heures moteur contrat<input type="number" step="0.01" name="total_hours" value="{fmt_number(displayed_total_hours)}" {"readonly" if quote["import_id"] is not None else ""}></label>
+            <label>Compteur moteur actuel<input type="number" step="0.01" min="0" name="current_engine_hours" value="{'' if quote['current_engine_hours'] is None else fmt_number(quote['current_engine_hours'])}" placeholder="Compteur reel de la machine"></label>
+            <label>Heures moteur par an<input type="number" step="0.01" name="hours_per_year" value="{fmt_number(displayed_hours_per_year)}" {"readonly" if quote["import_id"] is not None else ""}></label>
             <label>Taux horaire main-d’œuvre input<input type="number" step="0.01" name="labour_rate" value="{fmt_number(quote['labour_rate'])}"></label>
             <label>Coût total pièces<input type="number" step="0.01" name="total_parts" value="{fmt_number(quote['total_parts'])}"></label>
             <label>Coût total main-d’œuvre<input type="number" step="0.01" name="total_labour" value="{fmt_number(quote['total_labour'])}" readonly></label>
             <label>Coût divers<input type="number" step="0.01" name="total_misc" value="{fmt_number(quote['total_misc'])}"></label>
+
+            {maintenance_schedule_html}
 
             <h2 style="
                 grid-column:1 / -1;
@@ -2751,6 +2963,57 @@ def quote_inputs_page(quote_id: int, request: Request):
         <a class="button secondary" href="/">Retour offres contrats</a>
     </form>
 
+    <script>
+    (() => {{
+        const meterInput = document.querySelector(
+            'input[name="current_engine_hours"]'
+        );
+
+        if (!meterInput) {{
+            return;
+        }}
+
+        const refreshMaintenanceMeters = () => {{
+            const currentMeter = parseFloat(
+                meterInput.value
+            );
+
+            document.querySelectorAll(
+                '.maintenance-planned-meter'
+            ).forEach((cell) => {{
+                const offset = parseFloat(
+                    cell.dataset.maintenanceOffset
+                );
+
+                if (
+                    Number.isFinite(currentMeter)
+                    && Number.isFinite(offset)
+                ) {{
+                    const planned = currentMeter + offset;
+
+                    cell.textContent =
+                        planned.toLocaleString(
+                            'fr-FR',
+                            {{
+                                maximumFractionDigits: 2
+                            }}
+                        )
+                        + ' h';
+                }} else {{
+                    cell.textContent = '-';
+                }}
+            }});
+        }};
+
+        meterInput.addEventListener(
+            'input',
+            refreshMaintenanceMeters
+        );
+
+        refreshMaintenanceMeters();
+    }})();
+    </script>
+
     {import_control_html}
 
     {pricing_result_html}
@@ -2775,6 +3038,7 @@ def save_quote_inputs(
     country: str = Form(""),
     status: str = Form("draft"),
     total_hours: float = Form(0),
+    current_engine_hours: float | None = Form(None),
     hours_per_year: float = Form(0),
     labour_rate: float = Form(0),
     total_parts: float = Form(0),
@@ -2816,6 +3080,61 @@ def save_quote_inputs(
         quote = get_quote_for_active_company_request(conn, quote_id, request)
         if quote is None:
             return quote_access_denied_response(quote_id)
+
+        # Pour un devis importe, les donnees techniques de maintenance
+        # restent celles du fichier Service Calculator original.
+        # Le compteur moteur reel est la donnee saisie par notre logiciel.
+        if quote["import_id"] is not None:
+            try:
+                import json as _save_basis_json
+
+                source_import = conn.execute(
+                    """
+                    SELECT raw_json
+                    FROM imports
+                    WHERE id = ?
+                    """,
+                    (quote["import_id"],),
+                ).fetchone()
+
+                if (
+                    source_import
+                    and source_import["raw_json"]
+                ):
+                    source_raw = _save_basis_json.loads(
+                        source_import["raw_json"]
+                    )
+
+                    calculation_basis = (
+                        source_raw.get("calculation_basis")
+                        or {}
+                    )
+
+                    source_total_hours = float(
+                        calculation_basis.get(
+                            "total_calculation_hours",
+                            0,
+                        )
+                        or 0
+                    )
+
+                    source_hours_per_year = float(
+                        calculation_basis.get(
+                            "op_hours_per_year",
+                            0,
+                        )
+                        or 0
+                    )
+
+                    if source_total_hours > 0:
+                        total_hours = source_total_hours
+
+                    if source_hours_per_year > 0:
+                        hours_per_year = source_hours_per_year
+
+            except Exception:
+                # Compatibilite avec les anciens imports incomplets.
+                pass
 
         # Un devis = un seul taux horaire main-d'oeuvre.
         # Priorite aux heures source Volvo tracees.
@@ -2870,7 +3189,7 @@ def save_quote_inputs(
                 customer_email=?,
                 customer_siret=?,
                 product_designation=?, engine_serial_number=?, product_name=?, country=?, status=?,
-                total_hours=?, hours_per_year=?, labour_rate=?, total_parts=?, total_labour=?, total_misc=?,
+                total_hours=?, current_engine_hours=?, hours_per_year=?, labour_rate=?, total_parts=?, total_labour=?, total_misc=?,
                 travel_distance_one_way_km=?,
                 travel_time_one_way_hours=?,
                 travel_round_trips_per_intervention=?,
@@ -2904,7 +3223,7 @@ def save_quote_inputs(
              customer_email.strip(),
              customer_siret.strip(),
              product_designation.strip(), engine_serial_number.strip(), product_name.strip(), country.strip(), status,
-             total_hours, hours_per_year, labour_rate, total_parts, total_labour, total_misc,
+             total_hours, (max(0, current_engine_hours) if current_engine_hours is not None else None), hours_per_year, labour_rate, total_parts, total_labour, total_misc,
              max(0, travel_distance_one_way_km or 0),
              max(0, travel_time_one_way_hours or 0),
              max(0, travel_round_trips_per_intervention or 0),
@@ -6417,11 +6736,18 @@ def create_contract_page(quote_id: int, request: Request):
 
     imported_quote = quote["import_id"] is not None
 
-    start_engine_hours_value = (
-        ""
-        if imported_quote
-        else "0"
-    )
+    quote_current_engine_hours = quote["current_engine_hours"]
+
+    if quote_current_engine_hours is not None:
+        start_engine_hours_value = (
+            f"{max(0.0, float(quote_current_engine_hours)):g}"
+        )
+    else:
+        start_engine_hours_value = (
+            ""
+            if imported_quote
+            else "0"
+        )
 
     planned_end_engine_hours_value = (
         ""
@@ -6785,6 +7111,64 @@ def create_contract_submit(
         float(quote["hours_per_year"] or 0),
     )
 
+    # Pour un devis importe, la base technique du contrat
+    # vient toujours du fichier Service Calculator original.
+    # Le compteur moteur reel est la seule donnee recalee
+    # par notre logiciel.
+    if quote["import_id"] is not None:
+        try:
+            import json as _contract_basis_json
+
+            with get_connection() as basis_conn:
+                basis_row = basis_conn.execute(
+                    """
+                    SELECT raw_json
+                    FROM imports
+                    WHERE id = ?
+                    """,
+                    (quote["import_id"],),
+                ).fetchone()
+
+            if basis_row and basis_row["raw_json"]:
+                basis_raw = _contract_basis_json.loads(
+                    basis_row["raw_json"]
+                )
+
+                calculation_basis = (
+                    basis_raw.get("calculation_basis")
+                    or {}
+                )
+
+                source_contract_hours = float(
+                    calculation_basis.get(
+                        "total_calculation_hours",
+                        0,
+                    )
+                    or 0
+                )
+
+                source_hours_per_year = float(
+                    calculation_basis.get(
+                        "op_hours_per_year",
+                        0,
+                    )
+                    or 0
+                )
+
+                if source_contract_hours > 0:
+                    contract_hours = (
+                        source_contract_hours
+                    )
+
+                if source_hours_per_year > 0:
+                    hours_per_year = (
+                        source_hours_per_year
+                    )
+
+        except Exception:
+            # Compatibilite avec les anciens imports.
+            pass
+
     proposed_end_hours = (
         start_engine_hours + contract_hours
     )
@@ -6972,6 +7356,12 @@ def create_contract_submit(
         components_by_engine_hours = {}
         component_occurrence_counts = {}
 
+        # Original Service Calculator maintenance basis.
+        # This remains unchanged even if quote.total_hours is edited later.
+        source_total_calculation_hours = 0.0
+        source_detail_engine_hours = []
+        source_schedule_origin_hours = None
+
         if quote["import_id"] is not None:
             try:
                 import json as _contract_json
@@ -6990,6 +7380,21 @@ def create_contract_submit(
                         import_row["raw_json"]
                     )
 
+                    calculation_basis = (
+                        raw_import.get("calculation_basis") or {}
+                    )
+
+                    try:
+                        source_total_calculation_hours = float(
+                            calculation_basis.get(
+                                "total_calculation_hours",
+                                0,
+                            )
+                            or 0
+                        )
+                    except (TypeError, ValueError):
+                        source_total_calculation_hours = 0.0
+
                     for detail in raw_import.get(
                         "intervention_details",
                         [],
@@ -7007,6 +7412,10 @@ def create_contract_submit(
                             )
                         except (TypeError, ValueError):
                             continue
+
+                        source_detail_engine_hours.append(
+                            detail_hours
+                        )
 
                         detail_components = []
                         seen_components = set()
@@ -7041,11 +7450,26 @@ def create_contract_submit(
                                     + 1
                                 )
 
+                    if (
+                        source_total_calculation_hours > 0
+                        and source_detail_engine_hours
+                    ):
+                        # Internal origin used only to convert
+                        # Excel maintenance milestones into offsets.
+                        # It is not a real machine meter reading.
+                        source_schedule_origin_hours = (
+                            max(source_detail_engine_hours)
+                            - source_total_calculation_hours
+                        )
+
             except Exception:
                 # Legacy imports remain supported by the
                 # historical engine-hour fallback below.
                 components_by_engine_hours = {}
                 component_occurrence_counts = {}
+                source_total_calculation_hours = 0.0
+                source_detail_engine_hours = []
+                source_schedule_origin_hours = None
 
         def components_for_relative_hours(relative_hours):
             value = float(relative_hours or 0)
@@ -7072,25 +7496,51 @@ def create_contract_submit(
 
         for imported in imported_interventions:
 
-            planned_hours = float(
+            source_hours = float(
                 imported["engine_hours"] or 0
             )
 
-            # Service Calculator supplies absolute
-            # engine-meter maintenance milestones.
-            if planned_hours < start_engine_hours:
-                continue
+            # Convert the imported Excel maintenance milestone
+            # into its position inside the maintenance programme,
+            # then apply that offset to the real machine meter.
+            # The Excel maintenance data itself remains unchanged.
+            if source_schedule_origin_hours is not None:
+                source_offset_hours = (
+                    source_hours
+                    - source_schedule_origin_hours
+                )
+
+                if source_offset_hours < -0.01:
+                    continue
+
+                hours_from_start = max(
+                    0.0,
+                    source_offset_hours,
+                )
+
+                planned_hours = (
+                    start_engine_hours
+                    + hours_from_start
+                )
+
+            else:
+                # Legacy fallback when the original import basis
+                # is not available.
+                planned_hours = source_hours
+
+                if planned_hours < start_engine_hours:
+                    continue
+
+                hours_from_start = max(
+                    0.0,
+                    planned_hours - start_engine_hours,
+                )
 
             if (
                 planned_end_engine_hours > start_engine_hours
                 and planned_hours > planned_end_engine_hours
             ):
                 continue
-
-            hours_from_start = max(
-                0.0,
-                planned_hours - start_engine_hours,
-            )
 
             # Planned dates belong to the actual contract,
             # not to the original Service Calculator calendar.
@@ -7133,13 +7583,14 @@ def create_contract_submit(
                 (
                     contract_id,
                     intervention_type,
-                    planned_hours,
+                    source_hours,
                     planned_hours,
                     intervention_date,
                     "planned",
                     (
                         "Generated from quote intervention "
-                        f"{planned_hours:g} h"
+                        f"{source_hours:g} h"
+                        f" -> planned {planned_hours:g} h"
                     ),
                 ),
             )
@@ -7148,13 +7599,16 @@ def create_contract_submit(
                 cursor_intervention.lastrowid
             )
 
+            # Components remain linked to the original
+            # Service Calculator milestone, not to the rebased
+            # contract meter value.
             components = components_by_engine_hours.get(
-                round(planned_hours, 3)
+                round(source_hours, 3)
             )
 
             if components is None:
                 components = components_for_relative_hours(
-                    planned_hours
+                    source_hours
                 )
 
             for component in components:

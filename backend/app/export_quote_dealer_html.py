@@ -276,6 +276,149 @@ def build_parts_dc_analysis(lines):
     }
 
 
+
+def build_planned_engine_hours_by_intervention(
+    quote,
+    interventions,
+):
+    """
+    Recale uniquement le compteur affiche dans le planning.
+
+    Les interventions et toutes les donnees de maintenance
+    restent celles du fichier Excel importe.
+
+    None comme valeur de compteur signifie que le compteur reel
+    de la machine n'a pas encore ete renseigne.
+    """
+    try:
+        quote_keys = quote.keys()
+    except Exception:
+        quote_keys = []
+
+    if (
+        "import_id" not in quote_keys
+        or quote["import_id"] is None
+    ):
+        return None
+
+    if "current_engine_hours" not in quote_keys:
+        return None
+
+    current_engine_hours = quote["current_engine_hours"]
+
+    if current_engine_hours is None:
+        return {
+            intervention["id"]: None
+            for intervention in interventions
+        }
+
+    try:
+        import json as _schedule_json
+
+        with get_connection() as conn:
+            import_row = conn.execute(
+                """
+                SELECT raw_json
+                FROM imports
+                WHERE id = ?
+                """,
+                (quote["import_id"],),
+            ).fetchone()
+
+        if not import_row or not import_row["raw_json"]:
+            return None
+
+        raw_import = _schedule_json.loads(
+            import_row["raw_json"]
+        )
+
+        calculation_basis = (
+            raw_import.get("calculation_basis")
+            or {}
+        )
+
+        maintenance_total_hours = float(
+            calculation_basis.get(
+                "total_calculation_hours",
+                0,
+            )
+            or 0
+        )
+
+        source_hours_values = [
+            float(
+                intervention["engine_hours"]
+                or 0
+            )
+            for intervention in interventions
+        ]
+
+        if (
+            maintenance_total_hours <= 0
+            or not source_hours_values
+        ):
+            return None
+
+        # Origine arithmetique servant uniquement a convertir
+        # les paliers Excel en ecarts de maintenance.
+        # Ce n'est PAS un compteur moteur importe.
+        schedule_origin = (
+            max(source_hours_values)
+            - maintenance_total_hours
+        )
+
+        real_meter = max(
+            0.0,
+            float(current_engine_hours),
+        )
+
+        planned_by_id = {}
+
+        for intervention in interventions:
+            source_hours = float(
+                intervention["engine_hours"]
+                or 0
+            )
+
+            maintenance_offset = (
+                source_hours
+                - schedule_origin
+            )
+
+            if maintenance_offset < -0.01:
+                continue
+
+            if (
+                maintenance_offset
+                > maintenance_total_hours + 0.01
+            ):
+                continue
+
+            planned_by_id[intervention["id"]] = (
+                real_meter
+                + maintenance_offset
+            )
+
+        return planned_by_id
+
+    except Exception:
+        # Anciennes donnees / anciens imports :
+        # conserver le comportement historique.
+        return None
+
+
+def exported_engine_hours(
+    intervention,
+    planned_by_id,
+):
+    if planned_by_id is None:
+        return intervention["engine_hours"]
+
+    return planned_by_id.get(
+        intervention["id"]
+    )
+
+
 def render_quote_html(quote, lines, interventions):
     currency = quote["currency"] or "EUR"
     parts_dc = build_parts_dc_analysis(lines)
@@ -286,11 +429,32 @@ def render_quote_html(quote, lines, interventions):
     created_at = escape(str(quote["created_at"] or ""))
 
     intervention_rows = ""
+
+    planned_engine_hours_by_id = (
+        build_planned_engine_hours_by_intervention(
+            quote,
+            interventions,
+        )
+    )
+
     for intervention in interventions:
         intervention_rows += f"""
         <tr>
             <td>{escape(str(intervention["intervention_date"] or ""))}</td>
-            <td>{number(intervention["engine_hours"], " h")}</td>
+            <td>{
+                number(
+                    exported_engine_hours(
+                        intervention,
+                        planned_engine_hours_by_id,
+                    ),
+                    " h",
+                )
+                if exported_engine_hours(
+                    intervention,
+                    planned_engine_hours_by_id,
+                ) is not None
+                else "-"
+            }</td>
             <td>{money(intervention["parts_cost"], currency)}</td>
             <td>{money(intervention["labour_cost"], currency)}</td>
             <td>{money(intervention["misc_cost"], currency)}</td>
