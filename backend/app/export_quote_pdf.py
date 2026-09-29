@@ -781,11 +781,41 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             if safe_float(line["quantity"]) == 0:
                 continue
 
+            source_description = str(
+                line["description"] or ""
+            ).strip()
+
+            # Masquer les lignes de repere A, B, C, etc.
+            if (
+                len(source_description) == 1
+                and source_description.upper()
+                in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            ):
+                continue
+
             translated_description = (
                 translate_service_name_for_client(
-                    line["description"] or ""
+                    source_description
                 )
             )
+
+            normalized_description = " ".join(
+                str(translated_description or "")
+                .casefold()
+                .replace("’", "'")
+                .strip()
+                .rstrip(".")
+                .split()
+            )
+
+            hidden_oil_notice = (
+                "huile moteur et filtres à huile : "
+                "veuillez consulter les spécifications relatives à l'huile "
+                "dans le protocole d'entretien disponible dans l'espace produits"
+            )
+
+            if normalized_description == hidden_oil_notice:
+                continue
 
             client_line_data.append(
                 [
