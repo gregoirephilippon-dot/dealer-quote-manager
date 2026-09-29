@@ -5,6 +5,7 @@ from pathlib import Path
 from html import escape
 
 from database import get_connection, init_db
+from final_parts import build_final_parts
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -453,6 +454,12 @@ def exported_engine_hours(
 
 def render_quote_html(quote, lines, interventions):
     currency = quote["currency"] or "EUR"
+
+    # Detail affiche = etat final apres calcul.
+    final_lines = build_final_parts(quote, lines)
+
+    # Analyse financiere DC conservee telle quelle pour ne pas
+    # recompter les fluides, deja presents dans fluid_total.
     parts_dc = build_parts_dc_analysis(lines)
 
     product_designation = escape(str(quote["product_designation"] or ""))
@@ -532,7 +539,7 @@ def render_quote_html(quote, lines, interventions):
         """
 
     line_rows = ""
-    for line in lines[:80]:
+    for line in final_lines[:80]:
         line_rows += f"""
         <tr>
             <td>{escape(str(line["component"] or ""))}</td>
@@ -547,13 +554,13 @@ def render_quote_html(quote, lines, interventions):
     if not line_rows:
         line_rows = """
         <tr>
-            <td colspan="6">Aucune ligne detaillee importee.</td>
+            <td colspan="6">Aucun élément final détaillé.</td>
         </tr>
         """
 
     extra_line_note = ""
-    if len(lines) > 80:
-        extra_line_note = f"<p class='note'>Seules les 80 premieres lignes sont affichees sur {len(lines)} lignes importees.</p>"
+    if len(final_lines) > 80:
+        extra_line_note = f"<p class='note'>Seuls les 80 premiers éléments sont affichés sur {len(final_lines)} éléments finaux.</p>"
 
     html = f"""<!doctype html>
 <html lang="fr">
@@ -838,7 +845,7 @@ def render_quote_html(quote, lines, interventions):
             Les lignes sans DC sont conservees au montant catalogue, sans remise.
         </p>
 
-        <h2>Lignes detaillees importees</h2>
+        <h2>Détail final des éléments inclus</h2>
         {extra_line_note}
         <table>
             <thead>

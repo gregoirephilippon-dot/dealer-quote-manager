@@ -3,6 +3,7 @@ from pathlib import Path
 
 from database import get_connection, init_db
 from client_translation import translate_service_name_for_client
+from final_parts import build_final_parts
 
 
 try:
@@ -486,6 +487,7 @@ def exported_engine_hours(
 
 def build_pdf(quote, lines, interventions, settings, services, output_path: Path):
     currency = quote["currency"] or "EUR"
+    final_lines = build_final_parts(quote, lines)
 
     technical_total_hours = safe_float(
         quote["total_hours"]
@@ -765,7 +767,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
 
     # Detail client des lignes importees :
     # aucune information interne de groupe, reference ou prix.
-    if lines:
+    if final_lines:
         story.append(
             Paragraph(
                 "Détail des éléments inclus",
@@ -777,7 +779,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             ["Description", "Quantité"]
         ]
 
-        for line in lines:
+        for line in final_lines:
             if safe_float(line["quantity"]) == 0:
                 continue
 

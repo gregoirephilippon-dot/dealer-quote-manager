@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 from database import get_connection, init_db
+from final_parts import build_final_parts
 
 
 try:
@@ -559,6 +560,12 @@ def exported_engine_hours(
 
 def build_pdf(quote, lines, interventions, settings, services, output_path: Path):
     currency = quote["currency"] or "EUR"
+
+    # Le detail visuel utilise les elements finaux.
+    final_lines = build_final_parts(quote, lines)
+
+    # L'analyse DC historique reste basee sur les lignes source :
+    # fluid_total est deja comptabilise separement par le moteur.
     parts_dc = build_parts_dc_analysis(lines)
 
     technical_total_hours = safe_float(
@@ -842,12 +849,12 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     story.append(table)
 
     story.append(PageBreak())
-    story.append(Paragraph("Lignes detaillees importees", styles["Section"]))
+    story.append(Paragraph("Détail final des éléments inclus", styles["Section"]))
     story.append(Spacer(1, 6))
 
     line_data = [["Groupe", "Description", "Reference", "Qte", "PU", "Total"]]
     max_lines = 120
-    for line in lines[:max_lines]:
+    for line in final_lines[:max_lines]:
         line_data.append(
             [
                 str(line["component"] or ""),
@@ -859,8 +866,8 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             ]
         )
 
-    if len(lines) > max_lines:
-        line_data.append(["...", f"Affichage limite aux {max_lines} premieres lignes sur {len(lines)}", "", "", "", ""])
+    if len(final_lines) > max_lines:
+        line_data.append(["...", f"Affichage limite aux {max_lines} premieres lignes sur {len(final_lines)}", "", "", "", ""])
 
     if len(line_data) == 1:
         line_data.append(["-", "-", "-", "-", "-", "-"])

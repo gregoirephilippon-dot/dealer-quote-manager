@@ -5,6 +5,8 @@ from pathlib import Path
 from html import escape
 
 from database import get_connection, init_db
+from client_translation import translate_service_name_for_client
+from final_parts import build_final_parts
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -376,6 +378,36 @@ def exported_engine_hours(
 
 def render_quote_html(quote, lines, interventions):
     currency = quote["currency"] or "EUR"
+    final_lines = build_final_parts(quote, lines)
+
+    detail_rows_parts = []
+
+    for line in final_lines:
+        translated_description = (
+            translate_service_name_for_client(
+                str(line["description"] or "")
+            )
+        )
+
+        detail_rows_parts.append(
+            f"""
+            <tr>
+                <td>{escape(str(translated_description or "-"))}</td>
+                <td>{number(line["quantity"])}</td>
+            </tr>
+            """
+        )
+
+    if detail_rows_parts:
+        client_detail_rows = "\n".join(
+            detail_rows_parts
+        )
+    else:
+        client_detail_rows = """
+        <tr>
+            <td colspan="2">Aucun élément détaillé.</td>
+        </tr>
+        """
 
     customer_name = escape(str(quote["customer_name"] or "-"))
     customer_address = escape(str(quote["customer_address"] or "-"))
@@ -712,6 +744,19 @@ def render_quote_html(quote, lines, interventions):
             </thead>
             <tbody>
                 {intervention_rows}
+            </tbody>
+        </table>
+
+        <h2>Détail des éléments inclus</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>Quantité</th>
+                </tr>
+            </thead>
+            <tbody>
+                {client_detail_rows}
             </tbody>
         </table>
 

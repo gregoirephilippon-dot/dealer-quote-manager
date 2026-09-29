@@ -10,6 +10,17 @@ _CACHE_READY = False
 _DEEPL_UNAVAILABLE = False
 
 
+LOCAL_CLIENT_TRANSLATIONS = {
+    "Air filter": "Filtre à air",
+    "Filter": "Filtre",
+    "Engine oil": "Huile moteur",
+    "Volvo coolant ready mixed": "Liquide de refroidissement",
+    "AdBlue®/DEF tank, armature filter": (
+        "Réservoir AdBlue®/DEF, filtre d’armature"
+    ),
+}
+
+
 def _ensure_cache():
     global _CACHE_READY
 
@@ -105,6 +116,12 @@ def translate_service_name_for_client(value):
 
     if not source_text:
         return source_text
+
+    local_translation = LOCAL_CLIENT_TRANSLATIONS.get(
+        source_text
+    )
+    if local_translation is not None:
+        return local_translation
 
     _ensure_cache()
 
