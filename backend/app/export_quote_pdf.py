@@ -763,6 +763,122 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     )
     story.append(table)
 
+    # Detail client des lignes importees :
+    # aucune information interne de groupe, reference ou prix.
+    if lines:
+        story.append(
+            Paragraph(
+                "Détail des éléments inclus",
+                styles["Section"],
+            )
+        )
+
+        client_line_data = [
+            ["Description", "Quantité"]
+        ]
+
+        for line in lines:
+            if safe_float(line["quantity"]) == 0:
+                continue
+
+            translated_description = (
+                translate_service_name_for_client(
+                    line["description"] or ""
+                )
+            )
+
+            client_line_data.append(
+                [
+                    translated_description or "-",
+                    number(line["quantity"]),
+                ]
+            )
+
+        client_line_table = Table(
+            client_line_data,
+            colWidths=[145 * mm, 25 * mm],
+            repeatRows=1,
+        )
+
+        client_line_table.setStyle(
+            TableStyle(
+                [
+                    (
+                        "BACKGROUND",
+                        (0, 0),
+                        (-1, 0),
+                        colors.HexColor("#102033"),
+                    ),
+                    (
+                        "TEXTCOLOR",
+                        (0, 0),
+                        (-1, 0),
+                        colors.white,
+                    ),
+                    (
+                        "FONTNAME",
+                        (0, 0),
+                        (-1, 0),
+                        "Helvetica-Bold",
+                    ),
+                    (
+                        "FONTNAME",
+                        (0, 1),
+                        (-1, -1),
+                        "Helvetica",
+                    ),
+                    (
+                        "FONTSIZE",
+                        (0, 0),
+                        (-1, -1),
+                        8,
+                    ),
+                    (
+                        "GRID",
+                        (0, 0),
+                        (-1, -1),
+                        0.3,
+                        colors.HexColor("#E5E7EB"),
+                    ),
+                    (
+                        "VALIGN",
+                        (0, 0),
+                        (-1, -1),
+                        "TOP",
+                    ),
+                    (
+                        "ALIGN",
+                        (1, 1),
+                        (1, -1),
+                        "RIGHT",
+                    ),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [
+                            colors.white,
+                            colors.HexColor("#FAFAFA"),
+                        ],
+                    ),
+                    (
+                        "TOPPADDING",
+                        (0, 0),
+                        (-1, -1),
+                        4,
+                    ),
+                    (
+                        "BOTTOMPADDING",
+                        (0, 0),
+                        (-1, -1),
+                        4,
+                    ),
+                ]
+            )
+        )
+
+        story.append(client_line_table)
+
     story.append(Spacer(1, 18))
     story.append(Paragraph("Signatures", styles["Section"]))
     signature_table = Table(
