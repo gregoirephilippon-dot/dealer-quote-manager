@@ -101,7 +101,10 @@ def _is_imported_coolant(line):
     ).strip()
 
     return (
-        description == "volvo coolant ready mixed"
+        description in {
+            "coolant",
+            "volvo coolant ready mixed",
+        }
         or part_number in IMPORTED_COOLANT_PART_NUMBERS
     )
 
