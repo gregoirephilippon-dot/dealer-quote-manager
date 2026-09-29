@@ -200,9 +200,53 @@ def get_quote(quote_id: int):
 
 
 
+def safe_float(value, default=0.0):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def load_imported_quote_raw(quote):
+    try:
+        quote_keys = quote.keys()
+    except Exception:
+        quote_keys = []
+
+    if (
+        "import_id" not in quote_keys
+        or quote["import_id"] is None
+    ):
+        return None
+
+    try:
+        import json as _import_json
+
+        with get_connection() as conn:
+            import_row = conn.execute(
+                """
+                SELECT raw_json
+                FROM imports
+                WHERE id = ?
+                """,
+                (quote["import_id"],),
+            ).fetchone()
+
+        if not import_row or not import_row["raw_json"]:
+            return None
+
+        return _import_json.loads(
+            import_row["raw_json"]
+        )
+
+    except Exception:
+        return None
+
+
 def build_planned_engine_hours_by_intervention(
     quote,
     interventions,
+    raw_import=None,
 ):
     """
     Recale uniquement le compteur affiche dans le planning.
@@ -236,36 +280,24 @@ def build_planned_engine_hours_by_intervention(
         }
 
     try:
-        import json as _schedule_json
+        if raw_import is None:
+            raw_import = load_imported_quote_raw(
+                quote
+            )
 
-        with get_connection() as conn:
-            import_row = conn.execute(
-                """
-                SELECT raw_json
-                FROM imports
-                WHERE id = ?
-                """,
-                (quote["import_id"],),
-            ).fetchone()
-
-        if not import_row or not import_row["raw_json"]:
+        if raw_import is None:
             return None
-
-        raw_import = _schedule_json.loads(
-            import_row["raw_json"]
-        )
 
         calculation_basis = (
             raw_import.get("calculation_basis")
             or {}
         )
 
-        maintenance_total_hours = float(
+        maintenance_total_hours = safe_float(
             calculation_basis.get(
                 "total_calculation_hours",
                 0,
             )
-            or 0
         )
 
         source_hours_values = [
@@ -360,10 +392,41 @@ def render_quote_html(quote, lines, interventions):
     created_at = escape(str(quote["created_at"] or ""))
 
     selling_total = quote["selling_total"] or 0
-    total_hours = quote["total_hours"] or 0
+
+    total_hours = safe_float(
+        quote["total_hours"]
+    )
+
+    raw_import = load_imported_quote_raw(quote)
+    uses_imported_total_hours = False
+
+    if raw_import is not None:
+        calculation_basis = (
+            raw_import.get("calculation_basis")
+            or {}
+        )
+
+        source_total_hours = safe_float(
+            calculation_basis.get(
+                "total_calculation_hours",
+                0,
+            )
+        )
+
+        if source_total_hours > 0:
+            total_hours = source_total_hours
+            uses_imported_total_hours = True
+
     selling_per_hour = quote["selling_per_hour"]
-    if selling_per_hour is None and total_hours:
-        selling_per_hour = selling_total / total_hours
+
+    if uses_imported_total_hours and total_hours:
+        selling_per_hour = (
+            selling_total / total_hours
+        )
+    elif selling_per_hour is None and total_hours:
+        selling_per_hour = (
+            selling_total / total_hours
+        )
 
     intervention_rows = ""
 
@@ -371,6 +434,7 @@ def render_quote_html(quote, lines, interventions):
         build_planned_engine_hours_by_intervention(
             quote,
             interventions,
+            raw_import=raw_import,
         )
     )
 

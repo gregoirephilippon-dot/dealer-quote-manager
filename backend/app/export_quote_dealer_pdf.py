@@ -383,9 +383,53 @@ def build_company_identity_block(quote):
     ]
 
 
+def safe_float(value, default=0.0):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def load_imported_quote_raw(quote):
+    try:
+        quote_keys = quote.keys()
+    except Exception:
+        quote_keys = []
+
+    if (
+        "import_id" not in quote_keys
+        or quote["import_id"] is None
+    ):
+        return None
+
+    try:
+        import json as _import_json
+
+        with get_connection() as conn:
+            import_row = conn.execute(
+                """
+                SELECT raw_json
+                FROM imports
+                WHERE id = ?
+                """,
+                (quote["import_id"],),
+            ).fetchone()
+
+        if not import_row or not import_row["raw_json"]:
+            return None
+
+        return _import_json.loads(
+            import_row["raw_json"]
+        )
+
+    except Exception:
+        return None
+
+
 def build_planned_engine_hours_by_intervention(
     quote,
     interventions,
+    raw_import=None,
 ):
     """
     Recale uniquement le compteur affiche dans le planning.
@@ -419,36 +463,24 @@ def build_planned_engine_hours_by_intervention(
         }
 
     try:
-        import json as _schedule_json
+        if raw_import is None:
+            raw_import = load_imported_quote_raw(
+                quote
+            )
 
-        with get_connection() as conn:
-            import_row = conn.execute(
-                """
-                SELECT raw_json
-                FROM imports
-                WHERE id = ?
-                """,
-                (quote["import_id"],),
-            ).fetchone()
-
-        if not import_row or not import_row["raw_json"]:
+        if raw_import is None:
             return None
-
-        raw_import = _schedule_json.loads(
-            import_row["raw_json"]
-        )
 
         calculation_basis = (
             raw_import.get("calculation_basis")
             or {}
         )
 
-        maintenance_total_hours = float(
+        maintenance_total_hours = safe_float(
             calculation_basis.get(
                 "total_calculation_hours",
                 0,
             )
-            or 0
         )
 
         source_hours_values = [
@@ -528,6 +560,47 @@ def exported_engine_hours(
 def build_pdf(quote, lines, interventions, settings, services, output_path: Path):
     currency = quote["currency"] or "EUR"
     parts_dc = build_parts_dc_analysis(lines)
+
+    technical_total_hours = safe_float(
+        quote["total_hours"]
+    )
+    technical_hours_per_year = safe_float(
+        quote["hours_per_year"]
+    )
+
+    raw_import = load_imported_quote_raw(quote)
+    uses_imported_total_hours = False
+
+    if raw_import is not None:
+        calculation_basis = (
+            raw_import.get("calculation_basis")
+            or {}
+        )
+
+        source_total_hours = safe_float(
+            calculation_basis.get(
+                "total_calculation_hours",
+                0,
+            )
+        )
+
+        source_hours_per_year = safe_float(
+            calculation_basis.get(
+                "op_hours_per_year",
+                0,
+            )
+        )
+
+        if source_total_hours > 0:
+            technical_total_hours = (
+                source_total_hours
+            )
+            uses_imported_total_hours = True
+
+        if source_hours_per_year > 0:
+            technical_hours_per_year = (
+                source_hours_per_year
+            )
 
     doc = SimpleDocTemplate(
         str(output_path),
@@ -615,16 +688,28 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             ["Client", quote["customer_name"] or "-", "Designation", quote["product_designation"] or "-"],
             ["Numero de serie", quote["engine_serial_number"] or "-", "Produit", quote["product_name"] or "-"],
             ["Pays", quote["country"] or "-", "Devise", currency],
-            ["Heures contrat", number(quote["total_hours"], " h"), "Heures par an", number(quote["hours_per_year"], " h")],
+            ["Heures contrat", number(technical_total_hours, " h"), "Heures par an", number(technical_hours_per_year, " h")],
             ["Taux horaire input", money(quote["labour_rate"], currency) + "/h" if quote["labour_rate"] is not None else "-", "", ""],
         ],
     )
 
     total_cost = quote["total_cost"] or 0
     selling_total = quote["selling_total"] or 0
-    total_hours = quote["total_hours"] or 0
+    total_hours = technical_total_hours
 
-    cost_per_hour = total_cost / total_hours if total_hours else None
+    cost_per_hour = (
+        total_cost / total_hours
+        if total_hours
+        else None
+    )
+
+    selling_per_hour = quote["selling_per_hour"]
+
+    if uses_imported_total_hours and total_hours:
+        selling_per_hour = (
+            selling_total / total_hours
+        )
+
     margin_amount = selling_total - total_cost
     margin_percent = (margin_amount / total_cost * 100) if total_cost else None
     margin_percent_txt = f"{margin_percent:.2f} %" if margin_percent is not None else "-"
@@ -634,7 +719,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         story,
         [
             ["Cout brut importe", money(quote["total_cost"], currency), "Prix client", money(quote["selling_total"], currency)],
-            ["Cout importe / h", money(cost_per_hour, currency) + "/h", "Prix client / h", money(quote["selling_per_hour"], currency) + "/h"],
+            ["Cout importe / h", money(cost_per_hour, currency) + "/h", "Prix client / h", money(selling_per_hour, currency) + "/h"],
             ["Marge", money(margin_amount, currency), "Taux de marge", margin_percent_txt],
             ["Prix mensuel", money(quote["selling_monthly"], currency), "Services inclus", str(len(services))],
             ["Pieces", money(quote["total_parts"], currency), "Main d'oeuvre", money(quote["total_labour"], currency)],
@@ -704,6 +789,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         build_planned_engine_hours_by_intervention(
             quote,
             interventions,
+            raw_import=raw_import,
         )
     )
 

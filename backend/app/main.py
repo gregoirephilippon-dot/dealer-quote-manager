@@ -6736,6 +6736,58 @@ def create_contract_page(quote_id: int, request: Request):
 
     imported_quote = quote["import_id"] is not None
 
+    # Pour un devis importe, l'ecran de creation du contrat
+    # affiche toujours la base technique du fichier Excel original.
+    if imported_quote:
+        try:
+            import json as _contract_page_basis_json
+
+            with get_connection() as basis_conn:
+                basis_row = basis_conn.execute(
+                    """
+                    SELECT raw_json
+                    FROM imports
+                    WHERE id = ?
+                    """,
+                    (quote["import_id"],),
+                ).fetchone()
+
+            if basis_row and basis_row["raw_json"]:
+                basis_raw = _contract_page_basis_json.loads(
+                    basis_row["raw_json"]
+                )
+
+                calculation_basis = (
+                    basis_raw.get("calculation_basis")
+                    or {}
+                )
+
+                source_total_hours = float(
+                    calculation_basis.get(
+                        "total_calculation_hours",
+                        0,
+                    )
+                    or 0
+                )
+
+                source_hours_per_year = float(
+                    calculation_basis.get(
+                        "op_hours_per_year",
+                        0,
+                    )
+                    or 0
+                )
+
+                if source_total_hours > 0:
+                    total_hours = source_total_hours
+
+                if source_hours_per_year > 0:
+                    hours_per_year = source_hours_per_year
+
+        except Exception:
+            # Compatibilite avec les anciens imports incomplets.
+            pass
+
     quote_current_engine_hours = quote["current_engine_hours"]
 
     if quote_current_engine_hours is not None:
