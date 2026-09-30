@@ -10824,7 +10824,6 @@ def dealer_discounts_page(request: Request):
 
             <div class="actions">
                 <button type="submit">Enregistrer les codes remises</button>
-                <a class="button danger" href="/dealer-discounts/reset/confirm">Réinitialiser les valeurs constructeur</a>
             </div>
 
             <div class="note">
