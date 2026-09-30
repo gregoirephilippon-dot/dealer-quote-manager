@@ -111,41 +111,91 @@ DEFAULT_SETTINGS = {
 }
 
 
-def ensure_default_settings():
+def _ensure_company_settings_table(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS company_dealer_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL,
+            key TEXT NOT NULL,
+            value REAL NOT NULL,
+            description TEXT,
+            UNIQUE(company_id, key)
+        )
+        """
+    )
+
+
+def ensure_default_settings(company_id=None):
     init_db()
 
     with get_connection() as conn:
-        for key, item in DEFAULT_SETTINGS.items():
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO dealer_settings (
-                    key,
-                    value,
-                    description
+        if company_id is None:
+            for key, item in DEFAULT_SETTINGS.items():
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO dealer_settings (
+                        key,
+                        value,
+                        description
+                    )
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        key,
+                        item["value"],
+                        item["description"],
+                    ),
                 )
-                VALUES (?, ?, ?)
-                """,
-                (
-                    key,
-                    item["value"],
-                    item["description"],
-                ),
-            )
+        else:
+            company_id = int(company_id)
+            _ensure_company_settings_table(conn)
+
+            for key, item in DEFAULT_SETTINGS.items():
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO company_dealer_settings (
+                        company_id,
+                        key,
+                        value,
+                        description
+                    )
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        company_id,
+                        key,
+                        item["value"],
+                        item["description"],
+                    ),
+                )
 
         conn.commit()
 
 
-def list_settings():
-    ensure_default_settings()
+
+def list_settings(company_id=None):
+    ensure_default_settings(company_id)
 
     with get_connection() as conn:
-        rows = conn.execute(
-            """
-            SELECT key, value, description
-            FROM dealer_settings
-            ORDER BY key
-            """
-        ).fetchall()
+        if company_id is None:
+            rows = conn.execute(
+                """
+                SELECT key, value, description
+                FROM dealer_settings
+                ORDER BY key
+                """
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT key, value, description
+                FROM company_dealer_settings
+                WHERE company_id = ?
+                ORDER BY key
+                """,
+                (int(company_id),),
+            ).fetchall()
 
     print("Parametres dealer")
     print("-" * 80)
@@ -154,50 +204,89 @@ def list_settings():
         print(f"{row['key']} = {row['value']} | {row['description']}")
 
 
-def set_setting(key: str, value: float):
-    ensure_default_settings()
+
+def set_setting(key: str, value: float, company_id=None):
+    ensure_default_settings(company_id)
 
     with get_connection() as conn:
-        existing = conn.execute(
-            """
-            SELECT key
-            FROM dealer_settings
-            WHERE key = ?
-            """,
-            (key,),
-        ).fetchone()
+        if company_id is None:
+            existing = conn.execute(
+                """
+                SELECT key
+                FROM dealer_settings
+                WHERE key = ?
+                """,
+                (key,),
+            ).fetchone()
 
-        if existing is None:
-            print(f"Parametre inconnu : {key}")
-            print("Utilise d'abord : python backend/app/settings.py")
-            return
+            if existing is None:
+                print(f"Parametre inconnu : {key}")
+                return
 
-        conn.execute(
-            """
-            UPDATE dealer_settings
-            SET value = ?
-            WHERE key = ?
-            """,
-            (value, key),
-        )
+            conn.execute(
+                """
+                UPDATE dealer_settings
+                SET value = ?
+                WHERE key = ?
+                """,
+                (value, key),
+            )
+        else:
+            company_id = int(company_id)
+
+            existing = conn.execute(
+                """
+                SELECT key
+                FROM company_dealer_settings
+                WHERE company_id = ?
+                  AND key = ?
+                """,
+                (company_id, key),
+            ).fetchone()
+
+            if existing is None:
+                print(f"Parametre inconnu pour la societe {company_id} : {key}")
+                return
+
+            conn.execute(
+                """
+                UPDATE company_dealer_settings
+                SET value = ?
+                WHERE company_id = ?
+                  AND key = ?
+                """,
+                (value, company_id, key),
+            )
 
         conn.commit()
 
     print(f"Parametre modifie : {key} = {value}")
 
 
-def get_settings_dict():
-    ensure_default_settings()
+
+def get_settings_dict(company_id=None):
+    ensure_default_settings(company_id)
 
     with get_connection() as conn:
-        rows = conn.execute(
-            """
-            SELECT key, value
-            FROM dealer_settings
-            """
-        ).fetchall()
+        if company_id is None:
+            rows = conn.execute(
+                """
+                SELECT key, value
+                FROM dealer_settings
+                """
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT key, value
+                FROM company_dealer_settings
+                WHERE company_id = ?
+                """,
+                (int(company_id),),
+            ).fetchall()
 
     return {row["key"]: row["value"] for row in rows}
+
 
 
 if __name__ == "__main__":

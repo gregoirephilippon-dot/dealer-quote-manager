@@ -19,6 +19,7 @@ from fluid_catalog import (
 )
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+CONTRACT_TERMS_IMAGE_DIR = BASE_DIR / "storage" / "contract_terms"
 
 def _safe_uploaded_excel_path(upload_dir, filename, prefix="upload"):
     from pathlib import Path
@@ -1674,7 +1675,17 @@ def import_page(request: Request):
 def import_file(request: Request, file: UploadFile = File(...)):
     try:
         init_db()
-        ensure_default_settings()
+
+        company_id = (
+            get_active_company_id_for_request(
+                request
+            )
+        )
+
+        ensure_default_settings(
+            company_id
+        )
+
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         JSON_DIR.mkdir(parents=True, exist_ok=True)
         EXPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1691,7 +1702,7 @@ def import_file(request: Request, file: UploadFile = File(...)):
 
         quote_id = create_quote_from_json(
             str(json_path),
-            company_id=get_active_company_id_for_request(request),
+            company_id=company_id,
         )
 
         if quote_id is None:
@@ -2050,7 +2061,9 @@ def get_import_control_html(conn, quote):
         WHERE quote_id = ? AND service_id = '2,2'
     """, (quote_id,)).fetchone()
 
-    settings = get_settings_dict()
+    settings = get_settings_dict(
+        quote["company_id"]
+    )
 
     messages_ok = []
     messages_warn = []
@@ -3390,19 +3403,19 @@ def regenerate_quote(quote_id):
 
 
 
-def ensure_yearly_indexation_settings(max_years: int = 10):
+def ensure_yearly_indexation_settings(max_years: int = 10, company_id=None):
     for year_number in range(1, max_years + 1):
         default_value = 0
-        existing = get_settings_dict()
+        existing = get_settings_dict(company_id)
 
         parts_key = f"indexation_parts_year_{year_number}"
         labour_key = f"indexation_labour_year_{year_number}"
 
         if parts_key not in existing:
-            set_setting(parts_key, default_value)
+            set_setting(parts_key, default_value, company_id=company_id)
 
         if labour_key not in existing:
-            set_setting(labour_key, default_value)
+            set_setting(labour_key, default_value, company_id=company_id)
 
 
 def build_yearly_indexation_settings_html(settings: dict, max_years: int = 10) -> str:
@@ -3707,13 +3720,28 @@ def contract_documents_page(request: Request):
                     </div>
 
                     <div>
-                        <label><strong>Fichier</strong></label><br>
+                        <label><strong>Texte CGV / CGDV</strong></label><br>
                         <input
                             type="file"
                             name="file"
                             accept=".txt,.docx"
-                            required
                         >
+                        <div class="muted">
+                            Facultatif - TXT ou DOCX
+                        </div>
+                    </div>
+
+                    <div>
+                        <label><strong>Image CGV / CGDV</strong></label><br>
+                        <input
+                            type="file"
+                            name="image"
+                            accept=".png,.jpg,.jpeg"
+                        >
+                        <div class="muted">
+                            Facultatif - PNG ou JPG.
+                            Exemple : QR code vers les CGV en ligne.
+                        </div>
                     </div>
 
                     <div>
@@ -3726,7 +3754,9 @@ def contract_documents_page(request: Request):
             </form>
 
             <p style="margin-bottom:0; margin-top:12px;">
-                Formats acceptes : TXT et DOCX.
+                Une version peut contenir du texte, une image,
+                ou les deux. Au moins un des deux fichiers est obligatoire.
+                Formats texte : TXT / DOCX. Formats image : PNG / JPG.
                 La nouvelle version devient automatiquement
                 la version active de son type.
             </p>
@@ -3876,7 +3906,8 @@ def contract_terms_import(
     terms_type: str = Form(...),
     version_code: str = Form(...),
     title: str = Form(...),
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(None),
+    image: UploadFile | None = File(None),
 ):
     login_response = require_login(request)
     if login_response:
@@ -3950,16 +3981,27 @@ def contract_terms_import(
             status_code=400,
         )
 
-    try:
-        content_text = extract_contract_terms_text(file)
-    except ValueError as exc:
+    has_text_file = bool(
+        file
+        and (file.filename or "").strip()
+    )
+
+    has_image_file = bool(
+        image
+        and (image.filename or "").strip()
+    )
+
+    if not has_text_file and not has_image_file:
         return HTMLResponse(
             layout(
                 "Documents contrats",
-                f"""
+                """
                 <div class="card">
                     <h2>Import refuse</h2>
-                    <p>{str(exc)}</p>
+                    <p>
+                        Ajoute au moins un fichier texte
+                        ou une image.
+                    </p>
                     <p>
                         <a class="button secondary"
                            href="/contracts/documents">
@@ -3972,9 +4014,76 @@ def contract_terms_import(
             status_code=400,
         )
 
-    source_filename = Path(
-        file.filename or "document"
-    ).name
+    content_text = None
+    source_filename = None
+
+    if has_text_file:
+        try:
+            content_text = extract_contract_terms_text(file)
+
+        except ValueError as exc:
+            return HTMLResponse(
+                layout(
+                    "Documents contrats",
+                    f"""
+                    <div class="card">
+                        <h2>Import refuse</h2>
+                        <p>{str(exc)}</p>
+                        <p>
+                            <a class="button secondary"
+                               href="/contracts/documents">
+                                Retour
+                            </a>
+                        </p>
+                    </div>
+                    """,
+                ),
+                status_code=400,
+            )
+
+        source_filename = Path(
+            file.filename or "document"
+        ).name
+
+    image_source_filename = None
+    image_suffix = None
+
+    if has_image_file:
+        image_source_filename = Path(
+            image.filename or "image"
+        ).name
+
+        image_suffix = Path(
+            image_source_filename
+        ).suffix.lower()
+
+        if image_suffix not in (
+            ".png",
+            ".jpg",
+            ".jpeg",
+        ):
+            return HTMLResponse(
+                layout(
+                    "Documents contrats",
+                    """
+                    <div class="card">
+                        <h2>Import refuse</h2>
+                        <p>
+                            L'image doit etre au format
+                            PNG, JPG ou JPEG.
+                        </p>
+                        <p>
+                            <a class="button secondary"
+                               href="/contracts/documents">
+                                Retour
+                            </a>
+                        </p>
+                    </div>
+                    """,
+                ),
+                status_code=400,
+            )
+
 
     try:
         with get_connection() as conn:
@@ -4020,6 +4129,34 @@ def contract_terms_import(
                     status_code=400,
                 )
 
+            image_filename = None
+
+            if has_image_file:
+                import uuid
+
+                CONTRACT_TERMS_IMAGE_DIR.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                image_filename = (
+                    f"terms_image_{company_id}_"
+                    f"{terms_type}_"
+                    f"{uuid.uuid4().hex}"
+                    f"{image_suffix}"
+                )
+
+                image_path = (
+                    CONTRACT_TERMS_IMAGE_DIR
+                    / image_filename
+                )
+
+                with image_path.open("wb") as buffer:
+                    shutil.copyfileobj(
+                        image.file,
+                        buffer,
+                    )
+
             conn.execute(
                 """
                 UPDATE contract_terms_versions
@@ -4042,9 +4179,11 @@ def contract_terms_import(
                     title,
                     content_text,
                     source_filename,
+                    image_filename,
+                    image_source_filename,
                     is_active
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 1)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """,
                 (
                     company_id,
@@ -4053,6 +4192,8 @@ def contract_terms_import(
                     title,
                     content_text,
                     source_filename,
+                    image_filename,
+                    image_source_filename,
                 ),
             )
 
@@ -9885,9 +10026,15 @@ def settings_page(request: Request):
     if login_response:
         return login_response
 
-    ensure_default_settings()
-    ensure_yearly_indexation_settings()
-    settings = get_settings_dict()
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    company_id = int(context["company_id"])
+
+    ensure_default_settings(company_id)
+    ensure_yearly_indexation_settings(company_id=company_id)
+    settings = get_settings_dict(company_id)
     yearly_indexation_html = build_yearly_indexation_settings_html(settings)
     fields = [
         ("labour_margin_percent", "Marge main-d’œuvre (%)", "Marge appliquée sur la main-d’œuvre."),
@@ -9972,13 +10119,19 @@ async def save_settings(
     travel_hourly_rate: float = Form(...),
     equipment_moved_percent: float = Form(...),
 ):
-    ensure_default_settings()
-    set_setting("labour_margin_percent", labour_margin_percent)
-    set_setting("admin_fee_percent", admin_fee_percent)
-    set_setting("logistics_fee_percent", logistics_fee_percent)
-    set_setting("travel_price_per_km", travel_price_per_km)
-    set_setting("travel_hourly_rate", travel_hourly_rate)
-    set_setting("equipment_moved_percent", equipment_moved_percent)
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    company_id = int(context["company_id"])
+
+    ensure_default_settings(company_id)
+    set_setting("labour_margin_percent", labour_margin_percent, company_id=company_id)
+    set_setting("admin_fee_percent", admin_fee_percent, company_id=company_id)
+    set_setting("logistics_fee_percent", logistics_fee_percent, company_id=company_id)
+    set_setting("travel_price_per_km", travel_price_per_km, company_id=company_id)
+    set_setting("travel_hourly_rate", travel_hourly_rate, company_id=company_id)
+    set_setting("equipment_moved_percent", equipment_moved_percent, company_id=company_id)
     request_form = await request.form()
 
     for year_number in range(1, 11):
@@ -9995,8 +10148,16 @@ async def save_settings(
         except Exception:
             labour_value = 0
 
-        set_setting(f"indexation_parts_year_{year_number}", parts_value)
-        set_setting(f"indexation_labour_year_{year_number}", labour_value)
+        set_setting(
+            f"indexation_parts_year_{year_number}",
+            parts_value,
+            company_id=company_id,
+        )
+        set_setting(
+            f"indexation_labour_year_{year_number}",
+            labour_value,
+            company_id=company_id,
+        )
 
     return RedirectResponse(url="/settings", status_code=303)
 
@@ -10492,8 +10653,14 @@ def dealer_discounts_page(request: Request):
     if login_response:
         return login_response
 
-    _dd_ensure_schema()
-    rows = _dd_get_codes()
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    company_id = int(context["company_id"])
+
+    _dd_ensure_schema(company_id)
+    rows = _dd_get_codes(company_id)
 
     table_rows = []
     for row in rows:
@@ -10668,8 +10835,14 @@ async def dealer_discounts_save(request: _DealerDiscountRequest):
     if login_response:
         return login_response
 
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    company_id = int(context["company_id"])
+
     form = await request.form()
-    _dd_update_codes(form)
+    _dd_update_codes(form, company_id=company_id)
     return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
 
 @app.get("/dealer-discounts/reset/confirm", response_class=_DealerDiscountHTMLResponse)
@@ -10718,7 +10891,13 @@ def dealer_discounts_reset(request: Request):
     if login_response:
         return login_response
 
-    _dd_reset_codes()
+    context = get_request_company_context(request)
+    if not context:
+        return company_context_required_page()
+
+    company_id = int(context["company_id"])
+
+    _dd_reset_codes(company_id=company_id)
     return _DealerDiscountRedirectResponse(url="/dealer-discounts", status_code=303)
 # --- End dealer discount settings routes ---
 

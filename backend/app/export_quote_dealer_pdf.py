@@ -3,6 +3,7 @@ from pathlib import Path
 
 from database import get_connection, init_db
 from final_parts import build_final_parts
+from settings import get_settings_dict
 from pdf_detail_marker import detail_marker_drawing
 
 
@@ -197,14 +198,6 @@ def get_quote_data(quote_id: int):
             (quote_id,),
         ).fetchall()
 
-        settings = conn.execute(
-            """
-            SELECT key, value
-            FROM dealer_settings
-            ORDER BY key
-            """
-        ).fetchall()
-
         services = []
         try:
             services = conn.execute(
@@ -219,8 +212,23 @@ def get_quote_data(quote_id: int):
         except Exception:
             services = []
 
-    settings_dict = {row["key"]: row["value"] for row in settings}
-    return quote, lines, interventions, settings_dict, services
+    company_id = (
+        int(quote["company_id"])
+        if quote["company_id"] is not None
+        else None
+    )
+
+    settings_dict = get_settings_dict(
+        company_id
+    )
+
+    return (
+        quote,
+        lines,
+        interventions,
+        settings_dict,
+        services,
+    )
 
 
 def footer(canvas, doc):

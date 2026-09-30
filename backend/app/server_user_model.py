@@ -936,6 +936,7 @@ def get_active_company_context(email: str):
         return None
 
     user_id = user["id"]
+    company_id = get_active_company_id_for_user(email)
 
     with get_connection() as conn:
         tables = conn.execute(
@@ -976,17 +977,15 @@ def get_active_company_context(email: str):
                 status
             FROM {access_table}
             WHERE user_id = ?
+              AND company_id = ?
               AND status = 'active'
-            ORDER BY company_id ASC
             LIMIT 1
             """,
-            (user_id,),
+            (user_id, company_id),
         ).fetchone()
 
         if not access:
             return None
-
-        company_id = access["company_id"]
 
         company = None
         for candidate in ["companies", "company", "dealer_companies", "server_companies"]:

@@ -321,6 +321,8 @@ def init_db():
                 title TEXT,
                 content_text TEXT,
                 source_filename TEXT,
+                image_filename TEXT,
+                image_source_filename TEXT,
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 
@@ -403,6 +405,29 @@ def init_db():
                 """
             )
 
+
+        contract_terms_columns = {
+            row[1]
+            for row in conn.execute(
+                "PRAGMA table_info(contract_terms_versions)"
+            ).fetchall()
+        }
+
+        if "image_filename" not in contract_terms_columns:
+            conn.execute(
+                """
+                ALTER TABLE contract_terms_versions
+                ADD COLUMN image_filename TEXT
+                """
+            )
+
+        if "image_source_filename" not in contract_terms_columns:
+            conn.execute(
+                """
+                ALTER TABLE contract_terms_versions
+                ADD COLUMN image_source_filename TEXT
+                """
+            )
 
         contract_columns = {
             row["name"]

@@ -23,7 +23,7 @@ from reportlab.platypus import (
 BASE_DIR = Path(__file__).resolve().parents[2]
 EXPORT_DIR = BASE_DIR / "data" / "exports"
 CONTRACT_ASSET_DIR = Path(__file__).resolve().parent / "contract_assets"
-CGV_BANNER_PATH = CONTRACT_ASSET_DIR / "CGV.jpg"
+CONTRACT_TERMS_IMAGE_DIR = BASE_DIR / "storage" / "contract_terms"
 
 
 def money(value, currency="EUR"):
@@ -208,7 +208,12 @@ def add_kv_table(story, rows):
 
 
 def terms_story(story, title, term, styles):
-    story.append(Paragraph(title, styles["ContractSection"]))
+    story.append(
+        Paragraph(
+            title,
+            styles["ContractSection"],
+        )
+    )
 
     if term is None:
         story.append(
@@ -222,37 +227,89 @@ def terms_story(story, title, term, styles):
     story.append(
         Paragraph(
             f"<b>Version :</b> {safe_text(term['version_code'])}"
-            f" &nbsp;&nbsp; <b>Titre :</b> {safe_text(term['title'])}",
+            f" &nbsp;&nbsp; "
+            f"<b>Titre :</b> {safe_text(term['title'])}",
             styles["ContractSmall"],
         )
     )
 
-    story.append(Spacer(1, 5))
+    story.append(
+        Spacer(
+            1,
+            5,
+        )
+    )
 
-    content = str(term["content_text"] or "").strip()
+    content = str(
+        term["content_text"] or ""
+    ).strip()
 
-    if not content:
+    image_filename = str(
+        term["image_filename"] or ""
+    ).strip()
+
+    if content:
+        paragraphs = [
+            part.strip()
+            for part in content.replace(
+                "\r\n",
+                "\n",
+            ).split("\n")
+            if part.strip()
+        ]
+
+        for part in paragraphs:
+            story.append(
+                Paragraph(
+                    safe_text(part),
+                    styles["ContractTerms"],
+                )
+            )
+
+    if image_filename:
+        image_path = (
+            CONTRACT_TERMS_IMAGE_DIR
+            / Path(image_filename).name
+        )
+
+        if not image_path.exists():
+            raise FileNotFoundError(
+                (
+                    "Image conditions contractuelles "
+                    f"introuvable : {image_path}"
+                )
+            )
+
+        story.append(
+            Spacer(
+                1,
+                8,
+            )
+        )
+
+        terms_image = Image(
+            str(image_path)
+        )
+
+        terms_image._restrictSize(
+            170 * mm,
+            220 * mm,
+        )
+
+        terms_image.hAlign = "CENTER"
+
+        story.append(
+            terms_image
+        )
+
+    if not content and not image_filename:
         story.append(
             Paragraph(
                 "Aucun contenu.",
                 styles["ContractSmall"],
             )
         )
-        return
 
-    paragraphs = [
-        part.strip()
-        for part in content.replace("\r\n", "\n").split("\n")
-        if part.strip()
-    ]
-
-    for part in paragraphs:
-        story.append(
-            Paragraph(
-                safe_text(part),
-                styles["ContractTerms"],
-            )
-        )
 
 
 def export_contract_pdf(contract_id):
@@ -495,6 +552,16 @@ def export_contract_pdf(contract_id):
     story.append(intervention_table)
 
 
+    if cgv is not None:
+        story.append(PageBreak())
+
+        terms_story(
+            story,
+            "Conditions Generales de Vente - CGV",
+            cgv,
+            styles,
+        )
+
     if cgdv is not None:
         story.append(PageBreak())
 
@@ -510,13 +577,19 @@ def export_contract_pdf(contract_id):
     story.append(Paragraph("Acceptation du contrat", styles["ContractSection"]))
 
     acceptance_text = (
-        "Les parties reconnaissent avoir pris connaissance du present "
-        "contrat et des CGV accessibles en ligne via le QR code figurant "
-        "a la fin du present document"
+        "Les parties reconnaissent avoir pris connaissance "
+        "du present contrat"
     )
 
+    if cgv is not None:
+        acceptance_text += (
+            ", ainsi que des CGV associees au contrat"
+        )
+
     if cgdv is not None:
-        acceptance_text += ", ainsi que des CGDV associees au contrat"
+        acceptance_text += (
+            ", ainsi que des CGDV associees au contrat"
+        )
 
     acceptance_text += "."
 
@@ -559,33 +632,6 @@ def export_contract_pdf(contract_id):
     story.append(signature_table)
     story.append(Spacer(1, 14))
 
-    if not CGV_BANNER_PATH.exists():
-        raise FileNotFoundError(
-            f"Bandeau CGV introuvable : {CGV_BANNER_PATH}"
-        )
-
-    cgv_banner = Image(str(CGV_BANNER_PATH))
-    cgv_banner._restrictSize(125 * mm, 25 * mm)
-
-    banner_table = Table(
-        [[cgv_banner]],
-        colWidths=[125 * mm],
-    )
-
-    banner_table.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]
-        )
-    )
-
-    story.append(banner_table)
 
     def footer(canvas, document):
         canvas.saveState()

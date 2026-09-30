@@ -138,7 +138,12 @@ def enrich_quote_lines_discount_codes_from_catalog(conn, quote_id: int):
         print(f"Enrichissement DC depuis catalogue impossible : {exc}")
 
 
-def calculate_parts_totals_with_dc(conn, quote_id: int, fallback_total_parts: float):
+def calculate_parts_totals_with_dc(
+    conn,
+    quote_id: int,
+    fallback_total_parts: float,
+    company_id=None,
+):
     """
     Logique DC :
     - prix catalogue ligne = total_price ou quantity x unit_price
@@ -149,16 +154,26 @@ def calculate_parts_totals_with_dc(conn, quote_id: int, fallback_total_parts: fl
     - achat dealer = fallback_total_parts
     - vente client = fallback_total_parts
     """
-    ensure_dealer_discount_schema()
+    ensure_dealer_discount_schema(company_id)
     ensure_quote_lines_discount_columns(conn)
     enrich_quote_lines_discount_codes_from_catalog(conn, quote_id)
 
-    discounts = conn.execute(
-        """
-        SELECT dc, dealer_discount, customer_type_discount
-        FROM dealer_discount_codes
-        """
-    ).fetchall()
+    if company_id is None:
+        discounts = conn.execute(
+            """
+            SELECT dc, dealer_discount, customer_type_discount
+            FROM dealer_discount_codes
+            """
+        ).fetchall()
+    else:
+        discounts = conn.execute(
+            """
+            SELECT dc, dealer_discount, customer_type_discount
+            FROM company_dealer_discount_codes
+            WHERE company_id = ?
+            """,
+            (int(company_id),),
+        ).fetchall()
 
     discount_map = {}
     for row in discounts:
@@ -385,7 +400,12 @@ def calculate_fluid_total_from_quote(quote):
 
 
 
-def calculate_catalog_fluid_prices(conn, part_no, catalog_total):
+def calculate_catalog_fluid_prices(
+    conn,
+    part_no,
+    catalog_total,
+    company_id=None,
+):
     """
     Applique aux fluides la meme logique DC que les pieces :
     - dealer net = catalogue x (1 - remise dealer)
@@ -394,6 +414,8 @@ def calculate_catalog_fluid_prices(conn, part_no, catalog_total):
     Si aucune reference catalogue exploitable n'est presente,
     le montant saisi/calcul? reste utilise sans remise.
     """
+    ensure_dealer_discount_schema(company_id)
+
     catalog_total = to_float(catalog_total)
     part_no = str(part_no or "").strip()
 
@@ -428,14 +450,25 @@ def calculate_catalog_fluid_prices(conn, part_no, catalog_total):
     if dc is None:
         return result
 
-    discount_row = conn.execute(
-        """
-        SELECT dealer_discount, customer_type_discount
-        FROM dealer_discount_codes
-        WHERE dc = ?
-        """,
-        (dc,),
-    ).fetchone()
+    if company_id is None:
+        discount_row = conn.execute(
+            """
+            SELECT dealer_discount, customer_type_discount
+            FROM dealer_discount_codes
+            WHERE dc = ?
+            """,
+            (dc,),
+        ).fetchone()
+    else:
+        discount_row = conn.execute(
+            """
+            SELECT dealer_discount, customer_type_discount
+            FROM company_dealer_discount_codes
+            WHERE company_id = ?
+              AND dc = ?
+            """,
+            (int(company_id), dc),
+        ).fetchone()
 
     if not discount_row:
         return result
@@ -465,6 +498,7 @@ def apply_pricing(quote_id: int):
             """
             SELECT
                 id,
+                company_id,
                 currency,
                 total_parts,
                 total_labour,
@@ -509,7 +543,8 @@ def apply_pricing(quote_id: int):
             print(f"Devis introuvable : ID {quote_id}")
             return
 
-        settings = get_settings_dict()
+        company_id = quote["company_id"]
+        settings = get_settings_dict(company_id)
 
         currency = quote["currency"] or "EUR"
 
@@ -616,12 +651,14 @@ def apply_pricing(quote_id: int):
             conn,
             quote_value(quote, "oil_catalog_part_no", ""),
             oil_calculated_total,
+            company_id=company_id,
         )
 
         coolant_catalog_pricing = calculate_catalog_fluid_prices(
             conn,
             quote_value(quote, "coolant_catalog_part_no", ""),
             coolant_calculated_total,
+            company_id=company_id,
         )
 
         oil_additional_discount_percent = max(
@@ -737,6 +774,7 @@ def apply_pricing(quote_id: int):
             conn,
             quote_id,
             total_parts,
+            company_id=company_id,
         )
 
         # Si des lignes pièces avec DC existent, total_parts de référence devient le coût achat dealer.

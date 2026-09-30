@@ -1,9 +1,11 @@
 import sys
+from html import escape
 from pathlib import Path
 
 from database import get_connection, init_db
 from client_translation import translate_service_name_for_client
 from final_parts import build_final_parts
+from settings import get_settings_dict
 from pdf_detail_marker import detail_marker_drawing
 
 
@@ -32,7 +34,7 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 EXPORT_DIR = BASE_DIR / "data" / "exports"
 LOGO_DIR = BASE_DIR / "storage" / "logos"
 CONTRACT_ASSET_DIR = Path(__file__).resolve().parent / "contract_assets"
-CGV_BANNER_PATH = CONTRACT_ASSET_DIR / "CGV.jpg"
+CONTRACT_TERMS_IMAGE_DIR = BASE_DIR / "storage" / "contract_terms"
 
 
 def get_company_branding(quote):
@@ -178,7 +180,7 @@ def get_quote_data(quote_id: int):
         ).fetchone()
 
         if quote is None:
-            return None, [], [], {}, []
+            return None, [], [], {}, [], None
 
         lines = conn.execute(
             """
@@ -200,14 +202,6 @@ def get_quote_data(quote_id: int):
             (quote_id,),
         ).fetchall()
 
-        settings = conn.execute(
-            """
-            SELECT key, value
-            FROM dealer_settings
-            ORDER BY key
-            """
-        ).fetchall()
-
         services = []
         try:
             services = conn.execute(
@@ -222,8 +216,155 @@ def get_quote_data(quote_id: int):
         except Exception:
             services = []
 
-    settings_dict = {row["key"]: row["value"] for row in settings}
-    return quote, lines, interventions, settings_dict, services
+    company_id = (
+        int(quote["company_id"])
+        if quote["company_id"] is not None
+        else None
+    )
+
+    settings_dict = get_settings_dict(
+        company_id
+    )
+
+    cgv = None
+
+    if company_id is not None:
+        with get_connection() as conn:
+            cgv = conn.execute(
+                """
+                SELECT *
+                FROM contract_terms_versions
+                WHERE company_id = ?
+                  AND terms_type = 'cgv'
+                  AND is_active = 1
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (company_id,),
+            ).fetchone()
+
+    return (
+        quote,
+        lines,
+        interventions,
+        settings_dict,
+        services,
+        cgv,
+    )
+
+
+def append_quote_cgv(story, cgv):
+    if cgv is None:
+        return
+
+    styles = getSampleStyleSheet()
+
+    story.append(
+        PageBreak()
+    )
+
+    story.append(
+        Paragraph(
+            "Conditions Generales de Vente",
+            styles["Heading2"],
+        )
+    )
+
+    version_code = escape(
+        str(
+            cgv["version_code"] or ""
+        )
+    )
+
+    title = escape(
+        str(
+            cgv["title"] or ""
+        )
+    )
+
+    story.append(
+        Paragraph(
+            (
+                f"<b>Version :</b> {version_code}"
+                f" &nbsp;&nbsp; "
+                f"<b>Titre :</b> {title}"
+            ),
+            styles["BodyText"],
+        )
+    )
+
+    story.append(
+        Spacer(
+            1,
+            8,
+        )
+    )
+
+    content = str(
+        cgv["content_text"] or ""
+    ).strip()
+
+    if content:
+        paragraphs = [
+            part.strip()
+            for part in content.replace(
+                "\r\n",
+                "\n",
+            ).split("\n")
+            if part.strip()
+        ]
+
+        for part in paragraphs:
+            story.append(
+                Paragraph(
+                    escape(part),
+                    styles["BodyText"],
+                )
+            )
+
+            story.append(
+                Spacer(
+                    1,
+                    4,
+                )
+            )
+
+    image_filename = str(
+        cgv["image_filename"] or ""
+    ).strip()
+
+    if image_filename:
+        image_path = (
+            CONTRACT_TERMS_IMAGE_DIR
+            / Path(image_filename).name
+        )
+
+        if not image_path.exists():
+            raise FileNotFoundError(
+                f"Image CGV introuvable : {image_path}"
+            )
+
+        story.append(
+            Spacer(
+                1,
+                8,
+            )
+        )
+
+        cgv_image = Image(
+            str(image_path)
+        )
+
+        cgv_image._restrictSize(
+            170 * mm,
+            220 * mm,
+        )
+
+        cgv_image.hAlign = "CENTER"
+
+        story.append(
+            cgv_image
+        )
 
 
 def footer(canvas, doc):
@@ -486,7 +627,15 @@ def exported_engine_hours(
     )
 
 
-def build_pdf(quote, lines, interventions, settings, services, output_path: Path):
+def build_pdf(
+    quote,
+    lines,
+    interventions,
+    settings,
+    services,
+    cgv,
+    output_path: Path,
+):
     currency = quote["currency"] or "EUR"
     final_lines = build_final_parts(quote, lines)
 
@@ -952,39 +1101,30 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     story.append(signature_table)
     story.append(Spacer(1, 14))
 
-    if not CGV_BANNER_PATH.exists():
-        raise FileNotFoundError(
-            f"Bandeau CGV introuvable : {CGV_BANNER_PATH}"
-        )
 
-    cgv_banner = Image(str(CGV_BANNER_PATH))
-    cgv_banner._restrictSize(125 * mm, 25 * mm)
-
-    banner_table = Table(
-        [[cgv_banner]],
-        colWidths=[125 * mm],
+    append_quote_cgv(
+        story,
+        cgv,
     )
 
-    banner_table.setStyle(
-        TableStyle(
-            [
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                ("TOPPADDING", (0, 0), (-1, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-            ]
-        )
+    doc.build(
+        story,
+        onFirstPage=footer,
+        onLaterPages=footer,
     )
-
-    story.append(banner_table)
-
-    doc.build(story, onFirstPage=footer, onLaterPages=footer)
 
 
 def export_quote_pdf(quote_id: int):
-    quote, lines, interventions, settings, services = get_quote_data(quote_id)
+    (
+        quote,
+        lines,
+        interventions,
+        settings,
+        services,
+        cgv,
+    ) = get_quote_data(
+        quote_id
+    )
 
     if quote is None:
         print(f"Devis introuvable : ID {quote_id}")
@@ -993,7 +1133,15 @@ def export_quote_pdf(quote_id: int):
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = EXPORT_DIR / f"quote_{quote_id}.pdf"
 
-    build_pdf(quote, lines, interventions, settings, services, output_path)
+    build_pdf(
+        quote,
+        lines,
+        interventions,
+        settings,
+        services,
+        cgv,
+        output_path,
+    )
 
     print(f"Export PDF cree : {output_path}")
     print(f"Devis ID {quote_id}")

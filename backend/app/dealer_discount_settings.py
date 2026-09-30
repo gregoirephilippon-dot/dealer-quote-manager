@@ -45,7 +45,7 @@ def _percent_display(value):
         return 0.0
 
 
-def ensure_dealer_discount_schema():
+def ensure_dealer_discount_schema(company_id=None):
     with get_connection() as conn:
         conn.execute(
             """
@@ -60,47 +60,106 @@ def ensure_dealer_discount_schema():
             """
         )
 
-        for row in DEFAULT_DEALER_DISCOUNT_CODES:
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO dealer_discount_codes (
-                    dc,
-                    group_name,
-                    example_products,
-                    dealer_discount,
-                    customer_type_discount
-                )
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    row["dc"],
-                    row["group_name"],
-                    row["example_products"],
-                    row["dealer_discount"],
-                    row["customer_type_discount"],
-                ),
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS company_dealer_discount_codes (
+                company_id INTEGER NOT NULL,
+                dc INTEGER NOT NULL,
+                group_name TEXT,
+                example_products TEXT,
+                dealer_discount REAL DEFAULT 0,
+                customer_type_discount REAL DEFAULT 0,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(company_id, dc)
             )
+            """
+        )
+
+        if company_id is None:
+            for row in DEFAULT_DEALER_DISCOUNT_CODES:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO dealer_discount_codes (
+                        dc,
+                        group_name,
+                        example_products,
+                        dealer_discount,
+                        customer_type_discount
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row["dc"],
+                        row["group_name"],
+                        row["example_products"],
+                        row["dealer_discount"],
+                        row["customer_type_discount"],
+                    ),
+                )
+        else:
+            company_id = int(company_id)
+
+            for row in DEFAULT_DEALER_DISCOUNT_CODES:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO company_dealer_discount_codes (
+                        company_id,
+                        dc,
+                        group_name,
+                        example_products,
+                        dealer_discount,
+                        customer_type_discount
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        company_id,
+                        row["dc"],
+                        row["group_name"],
+                        row["example_products"],
+                        row["dealer_discount"],
+                        row["customer_type_discount"],
+                    ),
+                )
 
         conn.commit()
 
 
-def get_dealer_discount_codes():
-    ensure_dealer_discount_schema()
+
+def get_dealer_discount_codes(company_id=None):
+    ensure_dealer_discount_schema(company_id)
 
     with get_connection() as conn:
-        rows = conn.execute(
-            """
-            SELECT
-                dc,
-                group_name,
-                example_products,
-                dealer_discount,
-                customer_type_discount,
-                updated_at
-            FROM dealer_discount_codes
-            ORDER BY dc
-            """
-        ).fetchall()
+        if company_id is None:
+            rows = conn.execute(
+                """
+                SELECT
+                    dc,
+                    group_name,
+                    example_products,
+                    dealer_discount,
+                    customer_type_discount,
+                    updated_at
+                FROM dealer_discount_codes
+                ORDER BY dc
+                """
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT
+                    dc,
+                    group_name,
+                    example_products,
+                    dealer_discount,
+                    customer_type_discount,
+                    updated_at
+                FROM company_dealer_discount_codes
+                WHERE company_id = ?
+                ORDER BY dc
+                """,
+                (int(company_id),),
+            ).fetchall()
 
     result = []
     for row in rows:
@@ -120,18 +179,14 @@ def get_dealer_discount_codes():
     return result
 
 
-def update_dealer_discount_codes(form_data):
+
+def update_dealer_discount_codes(form_data, company_id=None):
     """
     form_data : dict compatible request.form()
-    champs attendus :
-    group_name_<dc>
-    example_products_<dc>
-    dealer_discount_<dc>
-    customer_type_discount_<dc>
     """
-    ensure_dealer_discount_schema()
+    ensure_dealer_discount_schema(company_id)
 
-    codes = get_dealer_discount_codes()
+    codes = get_dealer_discount_codes(company_id)
 
     with get_connection() as conn:
         for code in codes:
@@ -141,51 +196,99 @@ def update_dealer_discount_codes(form_data):
             dealer_discount = _to_decimal_percent(form_data.get(f"dealer_discount_{dc}", 0))
             customer_type_discount = _to_decimal_percent(form_data.get(f"customer_type_discount_{dc}", 0))
 
-            conn.execute(
-                """
-                UPDATE dealer_discount_codes
-                SET
-                    group_name = ?,
-                    example_products = ?,
-                    dealer_discount = ?,
-                    customer_type_discount = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE dc = ?
-                """,
-                (
-                    group_name,
-                    example_products,
-                    dealer_discount,
-                    customer_type_discount,
-                    dc,
-                ),
-            )
+            if company_id is None:
+                conn.execute(
+                    """
+                    UPDATE dealer_discount_codes
+                    SET
+                        group_name = ?,
+                        example_products = ?,
+                        dealer_discount = ?,
+                        customer_type_discount = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE dc = ?
+                    """,
+                    (
+                        group_name,
+                        example_products,
+                        dealer_discount,
+                        customer_type_discount,
+                        dc,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE company_dealer_discount_codes
+                    SET
+                        group_name = ?,
+                        example_products = ?,
+                        dealer_discount = ?,
+                        customer_type_discount = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE company_id = ?
+                      AND dc = ?
+                    """,
+                    (
+                        group_name,
+                        example_products,
+                        dealer_discount,
+                        customer_type_discount,
+                        int(company_id),
+                        dc,
+                    ),
+                )
 
         conn.commit()
 
 
-def reset_dealer_discount_codes():
-    ensure_dealer_discount_schema()
+
+def reset_dealer_discount_codes(company_id=None):
+    ensure_dealer_discount_schema(company_id)
 
     with get_connection() as conn:
         for row in DEFAULT_DEALER_DISCOUNT_CODES:
-            conn.execute(
-                """
-                UPDATE dealer_discount_codes
-                SET
-                    group_name = ?,
-                    example_products = ?,
-                    dealer_discount = ?,
-                    customer_type_discount = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE dc = ?
-                """,
-                (
-                    row["group_name"],
-                    row["example_products"],
-                    row["dealer_discount"],
-                    row["customer_type_discount"],
-                    row["dc"],
-                ),
-            )
+            if company_id is None:
+                conn.execute(
+                    """
+                    UPDATE dealer_discount_codes
+                    SET
+                        group_name = ?,
+                        example_products = ?,
+                        dealer_discount = ?,
+                        customer_type_discount = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE dc = ?
+                    """,
+                    (
+                        row["group_name"],
+                        row["example_products"],
+                        row["dealer_discount"],
+                        row["customer_type_discount"],
+                        row["dc"],
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE company_dealer_discount_codes
+                    SET
+                        group_name = ?,
+                        example_products = ?,
+                        dealer_discount = ?,
+                        customer_type_discount = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE company_id = ?
+                      AND dc = ?
+                    """,
+                    (
+                        row["group_name"],
+                        row["example_products"],
+                        row["dealer_discount"],
+                        row["customer_type_discount"],
+                        int(company_id),
+                        row["dc"],
+                    ),
+                )
+
         conn.commit()

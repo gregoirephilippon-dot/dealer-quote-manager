@@ -49,15 +49,51 @@ def _get_quote_labour_rate(conn, quote_id):
     return _to_float(row["labour_rate"], 0.0)
 
 
-def _get_travel_fee(conn):
-    row = conn.execute(
-        "SELECT value FROM dealer_settings WHERE key = 'travel_fee_fixed'",
+def _get_travel_fee(conn, quote_id):
+    quote = conn.execute(
+        """
+        SELECT company_id
+        FROM quotes
+        WHERE id = ?
+        """,
+        (quote_id,),
     ).fetchone()
+
+    company_id = (
+        quote["company_id"]
+        if quote
+        else None
+    )
+
+    row = None
+
+    if company_id is not None:
+        row = conn.execute(
+            """
+            SELECT value
+            FROM company_dealer_settings
+            WHERE company_id = ?
+              AND key = 'travel_fee_fixed'
+            """,
+            (company_id,),
+        ).fetchone()
+
+    if not row:
+        row = conn.execute(
+            """
+            SELECT value
+            FROM dealer_settings
+            WHERE key = 'travel_fee_fixed'
+            """
+        ).fetchone()
 
     if not row:
         return 0.0
 
-    return _to_float(row["value"], 0.0)
+    return _to_float(
+        row["value"],
+        0.0,
+    )
 
 
 def calculate_option_price(labour_rate, travel_fee, work_time_hours, quantity, unit_price, fixed_price, extra_travel):
@@ -159,7 +195,10 @@ def update_options_from_form(quote_id, form_data):
 
     with get_connection() as conn:
         labour_rate = _get_quote_labour_rate(conn, quote_id)
-        travel_fee = _get_travel_fee(conn)
+        travel_fee = _get_travel_fee(
+            conn,
+            quote_id,
+        )
 
         rows = conn.execute(
             """
