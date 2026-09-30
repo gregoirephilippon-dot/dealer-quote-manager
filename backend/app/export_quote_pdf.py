@@ -4,6 +4,7 @@ from pathlib import Path
 from database import get_connection, init_db
 from client_translation import translate_service_name_for_client
 from final_parts import build_final_parts
+from pdf_detail_marker import detail_marker_drawing
 
 
 try:
@@ -776,7 +777,7 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         )
 
         client_line_data = [
-            ["Description", "Quantité"]
+            ["Description", "Type", "Quantité"]
         ]
 
         for line in final_lines:
@@ -822,13 +823,14 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
             client_line_data.append(
                 [
                     translated_description or "-",
+                    detail_marker_drawing(line),
                     number(line["quantity"]),
                 ]
             )
 
         client_line_table = Table(
             client_line_data,
-            colWidths=[145 * mm, 25 * mm],
+            colWidths=[135 * mm, 10 * mm, 25 * mm],
             repeatRows=1,
         )
 
@@ -880,8 +882,20 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
                     ),
                     (
                         "ALIGN",
+                        (1, 0),
+                        (1, -1),
+                        "CENTER",
+                    ),
+                    (
+                        "VALIGN",
                         (1, 1),
                         (1, -1),
+                        "MIDDLE",
+                    ),
+                    (
+                        "ALIGN",
+                        (2, 1),
+                        (2, -1),
                         "RIGHT",
                     ),
                     (

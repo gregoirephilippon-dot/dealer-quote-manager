@@ -3,6 +3,7 @@ from pathlib import Path
 
 from database import get_connection, init_db
 from final_parts import build_final_parts
+from pdf_detail_marker import detail_marker_drawing
 
 
 try:
@@ -852,13 +853,14 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
     story.append(Paragraph("Détail final des éléments inclus", styles["Section"]))
     story.append(Spacer(1, 6))
 
-    line_data = [["Groupe", "Description", "Reference", "Qte", "PU", "Total"]]
+    line_data = [["Groupe", "Description", "Type", "Reference", "Qte", "PU", "Total"]]
     max_lines = 120
     for line in final_lines[:max_lines]:
         line_data.append(
             [
                 str(line["component"] or ""),
                 str(line["description"] or ""),
+                detail_marker_drawing(line),
                 str(line["part_number"] or ""),
                 number(line["quantity"]),
                 money(line["unit_price"], currency),
@@ -867,12 +869,24 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
         )
 
     if len(final_lines) > max_lines:
-        line_data.append(["...", f"Affichage limite aux {max_lines} premieres lignes sur {len(final_lines)}", "", "", "", ""])
+        line_data.append(["...", f"Affichage limite aux {max_lines} premieres lignes sur {len(final_lines)}", "", "", "", "", ""])
 
     if len(line_data) == 1:
-        line_data.append(["-", "-", "-", "-", "-", "-"])
+        line_data.append(["-", "-", "-", "-", "-", "-", "-"])
 
-    line_table = Table(line_data, colWidths=[24 * mm, 54 * mm, 28 * mm, 16 * mm, 28 * mm, 28 * mm], repeatRows=1)
+    line_table = Table(
+        line_data,
+        colWidths=[
+            24 * mm,
+            46 * mm,
+            10 * mm,
+            28 * mm,
+            16 * mm,
+            27 * mm,
+            27 * mm,
+        ],
+        repeatRows=1,
+    )
     line_table.setStyle(
         TableStyle(
             [
@@ -883,7 +897,9 @@ def build_pdf(quote, lines, interventions, settings, services, output_path: Path
                 ("FONTSIZE", (0, 0), (-1, -1), 7),
                 ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E5E7EB")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+                ("ALIGN", (2, 0), (2, -1), "CENTER"),
+                ("VALIGN", (2, 1), (2, -1), "MIDDLE"),
+                ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FAFAFA")]),
                 ("TOPPADDING", (0, 0), (-1, -1), 3),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
