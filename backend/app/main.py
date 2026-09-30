@@ -10416,7 +10416,14 @@ def get_export(filename: str, request: Request):
             status_code=404,
         )
 
-    return FileResponse(path)
+    return FileResponse(
+        path,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 # --- Permanent package routes - added by install_packages_permanent.py ---
