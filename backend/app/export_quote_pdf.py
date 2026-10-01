@@ -23,6 +23,7 @@ try:
         TableStyle,
         PageBreak,
         Image,
+        KeepTogether,
     )
 except ImportError:
     print("Module manquant : reportlab")
@@ -1074,8 +1075,6 @@ def build_pdf(
 
         story.append(client_line_table)
 
-    story.append(Spacer(1, 18))
-    story.append(Paragraph("Signatures", styles["Section"]))
     signature_table = Table(
         [
             ["Pour le dealer", "Pour le client"],
@@ -1098,7 +1097,15 @@ def build_pdf(
         )
     )
 
-    story.append(signature_table)
+    story.append(
+        KeepTogether(
+            [
+                Spacer(1, 18),
+                Paragraph("Signatures", styles["Section"]),
+                signature_table,
+            ]
+        )
+    )
     story.append(Spacer(1, 14))
 
 
