@@ -817,7 +817,7 @@ def build_pdf(
 
     if extra_warranty_enabled:
         contract_info_rows.append(
-            ["Garantie supplementaire", "1 an", "Limite fonctionnement", "3000 heures moteur"]
+            ["Garantie supplementaire", "1 an", "Limite fonctionnement", "4000 heures moteur"]
         )
 
     contract_info_rows.append(

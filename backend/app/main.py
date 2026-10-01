@@ -2684,7 +2684,7 @@ def quote_inputs_page(quote_id: int, request: Request):
                     value="1"
                     {"checked" if quote["extra_warranty_enabled"] else ""}
                 >
-                Garantie suppl&eacute;mentaire 1 an / limite 3000 heures moteur
+                Garantie suppl&eacute;mentaire 1 an / limite 4000 heures moteur
             </label>
 
             <input
