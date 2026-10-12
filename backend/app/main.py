@@ -2606,6 +2606,12 @@ def quote_inputs_page(quote_id: int, request: Request):
     <h2>Données contrat / moteur ID {quote_id}</h2>
 
     <form action="/quote/{quote_id}/inputs" method="post">
+        <input
+            type="hidden"
+            name="scroll_y"
+            id="quote_inputs_scroll_y"
+            value="0"
+        >
         <h3>Informations client, moteur et contrat</h3>
         <div class="card grid">
             <label>Raison sociale / Client<input type="text" name="customer_name" value="{quote['customer_name'] or ''}"></label>
@@ -2978,6 +2984,105 @@ def quote_inputs_page(quote_id: int, request: Request):
 
     <script>
     (() => {{
+        const quoteInputsForm = document.querySelector(
+            'form[action="/quote/{quote_id}/inputs"]'
+        );
+
+        const scrollField = document.getElementById(
+            "quote_inputs_scroll_y"
+        );
+
+        const rememberScrollPosition = () => {{
+            if (!scrollField) {{
+                return;
+            }}
+
+            scrollField.value = String(
+                Math.max(0, Math.round(window.scrollY))
+            );
+        }};
+
+        if (quoteInputsForm) {{
+            // Les onchange qui utilisent directement form.submit()
+            // passent bien par cet ecouteur en phase capture.
+            quoteInputsForm.addEventListener(
+                "change",
+                rememberScrollPosition,
+                true
+            );
+
+            // Bouton Enregistrer + recalculer et validation Entree.
+            quoteInputsForm.addEventListener(
+                "submit",
+                rememberScrollPosition,
+                true
+            );
+        }}
+
+        if ("scrollRestoration" in history) {{
+            history.scrollRestoration = "manual";
+        }}
+
+        const params = new URLSearchParams(
+            window.location.search
+        );
+
+        const requestedScroll = params.get("scroll_y");
+
+        if (requestedScroll !== null) {{
+            const scrollY = Number(requestedScroll);
+
+            const restoreScroll = () => {{
+                if (!Number.isFinite(scrollY)) {{
+                    return;
+                }}
+
+                window.scrollTo(0, scrollY);
+            }};
+
+            const restoreAfterLoad = () => {{
+                requestAnimationFrame(() => {{
+                    requestAnimationFrame(() => {{
+                        restoreScroll();
+
+                        setTimeout(() => {{
+                            restoreScroll();
+
+                            const cleanUrl = new URL(
+                                window.location.href
+                            );
+
+                            cleanUrl.searchParams.delete(
+                                "scroll_y"
+                            );
+
+                            history.replaceState(
+                                null,
+                                "",
+                                cleanUrl.pathname +
+                                cleanUrl.search +
+                                cleanUrl.hash
+                            );
+                        }}, 250);
+                    }});
+                }});
+            }};
+
+            if (document.readyState === "complete") {{
+                restoreAfterLoad();
+            }} else {{
+                window.addEventListener(
+                    "load",
+                    restoreAfterLoad,
+                    {{ once: true }}
+                );
+            }}
+        }}
+    }})();
+    </script>
+
+    <script>
+    (() => {{
         const meterInput = document.querySelector(
             'input[name="current_engine_hours"]'
         );
@@ -3037,6 +3142,7 @@ def quote_inputs_page(quote_id: int, request: Request):
 def save_quote_inputs(
     quote_id: int,
     request: Request,
+    scroll_y: float = Form(0),
     customer_name: str = Form(""),
     customer_address: str = Form(""),
     customer_postal_code: str = Form(""),
@@ -3263,7 +3369,13 @@ def save_quote_inputs(
 
     regenerate_quote(quote_id)
     run_command([sys.executable, "backend/app/apply_pricing.py", str(quote_id)])
-    return RedirectResponse(url=f"/quote/{quote_id}/inputs", status_code=303)
+
+    scroll_target = max(0, int(scroll_y or 0))
+
+    return RedirectResponse(
+        url=f"/quote/{quote_id}/inputs?scroll_y={scroll_target}",
+        status_code=303,
+    )
 
 
 def is_locked_imported_service(row):
@@ -3325,6 +3437,12 @@ def quote_services_page(quote_id: int, request: Request):
     <h2>Prestations incluses au contrat & temps — Devis ID {quote_id}</h2>
     
     <form action="/quote/{quote_id}/services" method="post">
+        <input
+            type="hidden"
+            name="scroll_y"
+            id="quote_services_scroll_y"
+            value="0"
+        >
         <table>
             <thead>
                 <tr>
@@ -3338,7 +3456,98 @@ def quote_services_page(quote_id: int, request: Request):
         <button type="submit">Enregistrer prestations + recalculer</button>
         <a class="button secondary" href="/quote/{quote_id}/inputs">Retour données contrat</a>
         <a class="button secondary" href="/">Historique</a>
-    </form>"""
+    </form>
+
+    <script>
+    (() => {{
+        const servicesForm = document.querySelector(
+            'form[action="/quote/{quote_id}/services"]'
+        );
+
+        const scrollField = document.getElementById(
+            "quote_services_scroll_y"
+        );
+
+        const rememberScrollPosition = () => {{
+            if (!scrollField) {{
+                return;
+            }}
+
+            scrollField.value = String(
+                Math.max(0, Math.round(window.scrollY))
+            );
+        }};
+
+        if (servicesForm) {{
+            servicesForm.addEventListener(
+                "submit",
+                rememberScrollPosition,
+                true
+            );
+        }}
+
+        if ("scrollRestoration" in history) {{
+            history.scrollRestoration = "manual";
+        }}
+
+        const params = new URLSearchParams(
+            window.location.search
+        );
+
+        const requestedScroll = params.get("scroll_y");
+
+        if (requestedScroll !== null) {{
+            const scrollY = Number(requestedScroll);
+
+            const restoreScroll = () => {{
+                if (!Number.isFinite(scrollY)) {{
+                    return;
+                }}
+
+                window.scrollTo(0, scrollY);
+            }};
+
+            const restoreAfterLoad = () => {{
+                requestAnimationFrame(() => {{
+                    requestAnimationFrame(() => {{
+                        restoreScroll();
+
+                        setTimeout(() => {{
+                            restoreScroll();
+
+                            const cleanUrl = new URL(
+                                window.location.href
+                            );
+
+                            cleanUrl.searchParams.delete(
+                                "scroll_y"
+                            );
+
+                            history.replaceState(
+                                null,
+                                "",
+                                cleanUrl.pathname +
+                                cleanUrl.search +
+                                cleanUrl.hash
+                            );
+                        }}, 250);
+                    }});
+                }});
+            }};
+
+            if (document.readyState === "complete") {{
+                restoreAfterLoad();
+            }} else {{
+                window.addEventListener(
+                    "load",
+                    restoreAfterLoad,
+                    {{ once: true }}
+                );
+            }}
+        }}
+    }})();
+    </script>
+    """
     return layout("Prestations incluses au contrat & temps", content)
 
 @app.post("/quote/{quote_id}/services")
@@ -3356,6 +3565,16 @@ async def save_quote_services(quote_id: int, request: Request):
             return quote_access_denied_response(quote_id)
 
     form = await request.form()
+
+    raw_scroll_y = form.get("scroll_y", "0")
+
+    try:
+        scroll_target = max(
+            0,
+            int(float(raw_scroll_y or 0)),
+        )
+    except (TypeError, ValueError):
+        scroll_target = 0
 
     with get_connection() as conn:
         services = conn.execute("SELECT * FROM quote_services WHERE quote_id = ?", (quote_id,)).fetchall()
@@ -3392,7 +3611,11 @@ async def save_quote_services(quote_id: int, request: Request):
         conn.commit()
 
     regenerate_quote(quote_id)
-    return RedirectResponse(url=f"/quote/{quote_id}/services", status_code=303)
+
+    return RedirectResponse(
+        url=f"/quote/{quote_id}/services?scroll_y={scroll_target}",
+        status_code=303,
+    )
 
 def regenerate_quote(quote_id):
     run_command([sys.executable, "backend/app/apply_pricing.py", str(quote_id)])
