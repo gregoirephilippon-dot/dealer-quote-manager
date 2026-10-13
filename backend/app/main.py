@@ -76,23 +76,26 @@ async def clean_global_error_handler(request: Request, exc: Exception):
     return HTMLResponse(layout("Erreur", content), status_code=500)
 
 
+@app.get("/login-visual")
+def login_visual():
+    return FileResponse(
+        Path(__file__).resolve().parent / "login_media" / "login-page.png",
+        media_type="image/png",
+    )
+
+
+# DQM_VIDEO_LOGIN_V1
+@app.get("/login-video")
+def dqm_login_video():
+    return FileResponse(Path(__file__).resolve().parent / "login_media" / "video_connexion.mp4", media_type="video/mp4")
+
+@app.get("/login-video-poster")
+def dqm_login_video_poster():
+    return FileResponse(Path(__file__).resolve().parent / "login_media" / "poster_connexion.jpg", media_type="image/jpeg")
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page():
-    content = """
-    <h2>Connexion</h2>
-    <form method="post" action="/login" class="card">
-        <label>Email
-            <input type="email" name="email" autocomplete="username" required>
-        </label>
-        <label>Mot de passe
-            <input type="password" name="password" autocomplete="current-password" required>
-        </label>
-        <button type="submit">Se connecter</button>
-    </form>
-    """
-    return layout("Connexion", content)
-
-
+    return HTMLResponse((Path(__file__).resolve().parent / "login_media" / "video_login.html").read_text(encoding="utf-8"))
 
 
 @app.get("/logout")
@@ -125,6 +128,16 @@ def current_user_page(request: Request):
         </p>
         """,
     )
+
+# DQM_LOGIN_ERROR_ON_VISUAL_V1
+def login_visual_error_response(message: str, status_code: int = 401):
+    from html import escape as _escape
+    page_html = login_page().body.decode("utf-8")
+    notice = ('<div role="alert" class="login-alert">' + _escape(message) + '</div>')
+    if '</form>' not in page_html:
+        raise RuntimeError('Formulaire de connexion introuvable')
+    return HTMLResponse(page_html.replace('</form>', notice + '</form>', 1), status_code=status_code)
+
 
 def login_page_with_error(message: str):
     import html as _html
@@ -223,16 +236,10 @@ def login_submit(
                 user_status = None
 
         if not user or user_status != "active":
-            return HTMLResponse(
-                login_page_with_error("Compte utilisateur désactivé."),
-                status_code=403,
-            )
+            return login_visual_error_response("Compte utilisateur désactivé.", status_code=403)
 
         if not identity.user_has_active_company_access(email):
-            return HTMLResponse(
-                login_page_with_error("Aucun accès société actif actif. Contactez votre administrateur."),
-                status_code=403,
-            )
+            return login_visual_error_response("Aucun accès société actif. Contactez votre administrateur.", status_code=403)
 
         import session_security
 
@@ -246,17 +253,7 @@ def login_submit(
         )
         return response
 
-    return HTMLResponse(
-        layout(
-            "Connexion refusée",
-            """
-            <h2>Connexion refusée</h2>
-            <div class="error">Email ou mot de passe incorrect.</div>
-            <p><a class="button secondary" href="/login">Réessayer</a></p>
-            """,
-        ),
-        status_code=401,
-    )
+    return login_visual_error_response("E-mail ou mot de passe incorrect.", status_code=401)
 
 def get_logged_user_email(request: Request) -> str | None:
     import session_security
@@ -282,6 +279,12 @@ async def global_login_guard(request: Request, call_next):
         "/logout",
         "/health",
         "/favicon.ico",
+        "/login-visual",
+        "/login-video",
+        "/login-video-poster",
+        "/forgot-password",
+        "/reset-password",
+        "/activate-account",
     }
 
     path = request.url.path
@@ -12294,6 +12297,10 @@ async def server_users_create_user(request: Request):
     email = str(form.get("email") or "").strip().lower()
     full_name = str(form.get("full_name") or "").strip()
     temporary_password = str(form.get("temporary_password") or "").strip()
+    invitation_requested = not temporary_password
+    if invitation_requested:
+        import secrets
+        temporary_password = secrets.token_urlsafe(48)
     status = str(form.get("status") or "inactive").strip()
     company_id = int(form.get("company_id") or 0)
     role = str(form.get("role") or "TESTER").strip()
@@ -12334,6 +12341,14 @@ async def server_users_create_user(request: Request):
             status_code=400,
         )
 
+    if invitation_requested and status == "active" and company_id > 0:
+        import account_recovery
+        try:
+            new_user = identity.get_user_by_email(email)
+            account_recovery.issue(new_user, 'invite', str(request.base_url))
+        except Exception:
+            return HTMLResponse(layout('Invitation non envoyée',
+                '<h2>Compte créé, invitation non envoyée</h2><p>Vérifiez les e-mails puis utilisez le bouton Renvoyer invitation dans la gestion des utilisateurs.</p><p><a href="/server/users">Retour aux utilisateurs</a></p>'),status_code=503)
     return RedirectResponse(url="/server/users", status_code=303)
 
 
@@ -12456,6 +12471,9 @@ def server_users_settings_page(request: Request):
                     <button type="submit">{button_label}</button>
                 </form>
 
+                <form method="post" action="/server/users/{user['user_id']}/invite" style="margin:0 0 8px 0;">
+                    <button type="submit">Envoyer / renvoyer invitation</button>
+                </form>
                 <form method="post" action="/server/users/{user['user_id']}/password" style="margin:0;">
                     <input type="password" name="temporary_password" autocomplete="new-password" placeholder="Nouveau mot de passe temporaire" required>
                     <button type="submit">Changer mot de passe</button>
@@ -12511,8 +12529,8 @@ def server_users_settings_page(request: Request):
                 <input type="text" name="full_name">
             </label>
 
-            <label>Mot de passe temporaire
-                <input type="password" name="temporary_password" autocomplete="new-password" required>
+            <label>Mot de passe temporaire (facultatif : vide pour une invitation par e-mail)
+                <input type="password" name="temporary_password" autocomplete="new-password">
             </label>
 
             <label>Statut
@@ -12998,4 +13016,9 @@ async def require_owner_for_server_identity_routes(request: Request, call_next):
             return admin_response
 
     return await call_next(request)
+
+
+# DQM_ACCOUNT_RECOVERY_V1 : enregistrement des routes publiques et administratives.
+import account_recovery as _dqm_account_recovery
+_dqm_account_recovery.register(app, require_owner_or_super_admin)
 

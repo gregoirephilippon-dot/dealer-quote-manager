@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connexion Gwen Marine Service</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;min-height:100%}body{background:#07111f;font-family:Arial,Helvetica,sans-serif}
+.stage{position:relative;width:min(100vw,177.77778vh);aspect-ratio:16/9;margin:auto;overflow:hidden}
+@media(min-aspect-ratio:16/9){body{min-height:100vh;display:flex;align-items:center;justify-content:center}}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none}
+.form{position:absolute;inset:0}.field{position:absolute;background:transparent;border:1px solid transparent;outline:none;color:#16233e;font:500 clamp(10px,1.3vw,22px) Arial,sans-serif;padding-left:3%;padding-right:1%;min-width:0}
+.field::placeholder{color:transparent}.field:focus{background:rgba(255,255,255,.38);border-color:rgba(37,99,235,.6);border-radius:7px;box-shadow:0 0 0 2px rgba(37,99,235,.10)}
+.email{left:4.8%;top:60.1%;width:31.7%;height:6.2%}.password{left:4.8%;top:73.2%;width:27.5%;height:6.2%}
+.hotspot{position:absolute;display:block;background:transparent;border:0;padding:0;cursor:pointer}
+.hotspot:hover{background:rgba(255,255,255,.10);box-shadow:0 0 15px rgba(16,150,255,.18);border-radius:10px}.hotspot:active{transform:scale(.985)}
+.hotspot:focus-visible{outline:2px solid #55c3ff;outline-offset:2px;border-radius:8px}
+.eye{left:32.4%;top:73.2%;width:4.1%;height:6.2%}.submit{left:12.1%;top:81.9%;width:17.3%;height:5.6%}.forgot{left:15.3%;top:88.3%;width:10.8%;height:2.8%}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.login-alert{position:absolute;left:5%;top:52%;width:32%;padding:5px 8px;border:1px solid #ff7f91;border-radius:7px;color:#9f1239;background:rgba(255,245,246,.96);font-size:clamp(10px,1vw,15px);text-align:center;font-weight:700;z-index:5}
+@media(max-width:760px){.stage{min-width:760px}body{overflow-x:auto}}
+@media(prefers-reduced-motion:reduce){.hotspot{transition:none}}
+
+/* DQM_VIDEO_FIELDS_ALIGNMENT_V1 */
+.field {
+  font-size: clamp(11px, 1.05vw, 17px);
+  padding-left: 4.5%;
+  padding-right: .65%;
+  border-width: 1px;
+}
+.email { left: 2.95%; top: 60.25%; width: 31.85%; height: 5.80%; }
+.password { left: 2.95%; top: 73.35%; width: 28.55%; height: 5.80%; }
+/* Autofill Chrome must not produce an opaque rectangle on top of the video's graphics. */
+.field:-webkit-autofill,
+.field:-webkit-autofill:hover,
+.field:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px rgba(255,255,255,.09) inset;
+  -webkit-text-fill-color: #16233e;
+  caret-color: #16233e;
+  transition: background-color 9999s ease-out 0s;
+}
+
+/* DQM_VIDEO_INPUT_OPAQUE_V1 */
+/* La video affiche deja le texte indicatif des champs : le masquer
+   UNIQUEMENT dans la zone de saisie sans recouvrir les icones. */
+.field {
+    background: #fcfcfc !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    outline: 0 !important;
+    padding: 0 .6% !important;
+    font-size: clamp(11px, 1.10vw, 18px) !important;
+    color: #17243c !important;
+}
+.field::placeholder { color: transparent !important; }
+.email { left: 7.7% !important; top: 61.2% !important; width: 25.5% !important; height: 3.8% !important; }
+.password { left: 7.7% !important; top: 74.3% !important; width: 23.1% !important; height: 3.8% !important; }
+.field:focus {
+    border: 0 !important;
+    background: #fcfcfc !important;
+    box-shadow: 0 1px 0 #3b82f6 !important;
+    outline: none !important;
+}
+.field:-webkit-autofill, .field:-webkit-autofill:hover, .field:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px #fcfcfc inset !important;
+    -webkit-text-fill-color: #17243c !important;
+    caret-color: #17243c;
+}
+/* Supprime l'effet CSS decale du bouton : le halo existe deja dans la video. */
+.submit:hover, .submit:focus:not(:focus-visible), .submit:active {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.submit:active { transform: scale(.99); }
+</style></head>
+<body><main class="stage">
+<video autoplay muted playsinline loop preload="metadata" poster="/login-video-poster" aria-hidden="true"><source src="/login-video" type="video/mp4"></video>
+<form class="form" method="post" action="/login">
+<label for="login-email" class="sr-only">Adresse e-mail</label>
+<input id="login-email" class="field email" name="email" type="email" required autocomplete="username" placeholder="votre@email.com">
+<label for="login-password" class="sr-only">Mot de passe</label>
+<input id="login-password" class="field password" name="password" type="password" required autocomplete="current-password" placeholder="Votre mot de passe">
+<button class="hotspot eye" type="button" aria-label="Afficher le mot de passe" aria-pressed="false" onclick="const p=document.getElementById('login-password');const show=p.type==='password';p.type=show?'text':'password';this.setAttribute('aria-pressed',String(show));this.setAttribute('aria-label',show?'Masquer le mot de passe':'Afficher le mot de passe')"></button>
+<button class="hotspot submit" type="submit" aria-label="Se connecter"><span class="sr-only">Se connecter</span></button>
+<a class="hotspot forgot" href="/forgot-password" aria-label="Mot de passe oublié ?"><span class="sr-only">Mot de passe oublié ?</span></a>
+</form></main></body></html>
